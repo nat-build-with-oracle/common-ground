@@ -3,6 +3,8 @@
 A read-only, live 3D view of the Oracle fleet, drawn as a small nation. Real agent status from MAW, Herdr and
 the herdr agentic federation; everyday life around it (homes, routines, Parliament sittings) is simulated and labelled as such.
 
+New here? Take the [screenshot tour](docs/tutorial/README.md) of town.buildwithoracle.com first.
+
 ## Run
 
 ```sh
