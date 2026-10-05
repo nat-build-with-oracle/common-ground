@@ -1,0 +1,36 @@
+{
+  "name": "common-ground",
+  "private": true,
+  "license": "MIT",
+  "scripts": {
+    "dev": "next dev -H 127.0.0.1 -p 3301",
+    "build": "next build",
+    "start": "next start -H 127.0.0.1 -p 3301",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test tests/*.test.mjs",
+    "check": "npm run test && npm run typecheck",
+    "build:town": "OFFICE_HOSTED=1 next build",
+    "deploy:town": "npm run build:town && npx wrangler deploy -c wrangler.town.json"
+  },
+  "dependencies": {
+    "@react-three/drei": "^10.7.9",
+    "@react-three/fiber": "^9.8.1",
+    "@react-three/rapier": "^2.2.0",
+    "@xterm/addon-fit": "^0.10.0",
+    "@xterm/xterm": "^5.5.0",
+    "next": "^16.3.7",
+    "react": "19.3",
+    "react-dom": "19.3",
+    "recast-navigation": "^0.43.1",
+    "three": "^0.186.1",
+    "zustand": "^5.0.15"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.3",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@types/three": "^0.186.0",
+    "typescript": "^6.0.3"
+  },
+  "type": "module"
+}
