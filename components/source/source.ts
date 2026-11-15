@@ -13,7 +13,17 @@ export class AuthNeeded extends Error {}
 
 export function hostChoice(): HostChoice { return HOSTED && typeof window !== "undefined" ? parseHost(window.location.search) : { kind: "none" }; }
 const key = (origin: string) => `office-town:token:${origin}`;
-export function hostToken(origin: string) { try { return sessionStorage.getItem(key(origin)) ?? ""; } catch { return ""; } }
+/** One-click links: a `#token=…` fragment (fragments are never sent to any server) is moved into this
+ * tab's sessionStorage for the ?host= origin, then wiped from the address bar and the history entry. */
+export function adoptFragmentToken(): void {
+  if (!HOSTED || typeof window === "undefined") return;
+  const match = /(?:^#|&)token=([^&]+)/.exec(window.location.hash);
+  if (!match) return;
+  const choice = parseHost(window.location.search);
+  try { if (choice.kind === "host") sessionStorage.setItem(key(choice.origin), decodeURIComponent(match[1])); } catch { /* storage blocked */ }
+  window.history.replaceState(window.history.state, "", window.location.pathname + window.location.search);
+}
+export function hostToken(origin: string) { adoptFragmentToken(); try { return sessionStorage.getItem(key(origin)) ?? ""; } catch { return ""; } }
 export function setHostToken(origin: string, token: string) { try { if (token) sessionStorage.setItem(key(origin), token); else sessionStorage.removeItem(key(origin)); } catch { /* storage blocked */ } }
 
 async function hostGet(origin: string, path: string, signal?: AbortSignal): Promise<unknown> {
