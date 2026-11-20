@@ -203,6 +203,11 @@ kbd { font: 10px/1.4 var(--mono); padding: 1px 4px; border: 1px solid var(--line
 .preview-ribbon { position: absolute; top: 325px; left: 24px; max-width: 255px; color: var(--coral); padding: 6px 10px; background: var(--paper); border: 1px dashed var(--coral); font: 9px/1.5 var(--mono); }
 .caption { position: absolute; bottom: 212px; left: 50%; display: flex; flex-direction: column; gap: 4px; transform: translateX(-50%); max-width: min(450px, 85vw); padding: 10px 14px; border-radius: 9px; background: var(--paper); box-shadow: 0 4px 20px #223d4b22; font-size: 12px; }
 .scene-hint { position: absolute; top: 150px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 7px; padding: 8px 12px; background: var(--paper); border-radius: 6px; font-size: 11px; }
+.walk-hint { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: center; }
+.walk-hint kbd { font: 600 10px var(--mono, ui-monospace); padding: 1px 5px; border-radius: 4px; background: rgb(255 255 255 / .18); }
+.walk-hint b { flex-basis: 100%; text-align: center; font-weight: 500; color: #ffd58a; }
+.walking-as-chip { position: absolute; top: 116px; left: 50%; z-index: 5; transform: translateX(-50%); display: flex; align-items: center; gap: 5px; width: max-content; max-width: 90vw; padding: 6px 10px; border: 1px solid rgb(255 255 255 / .22); border-radius: 999px; background: rgb(34 61 75 / .94); color: #fffaf0; box-shadow: 0 4px 16px rgb(20 35 43 / .18); font-size: 10px; }
+.walking-as-chip kbd { padding: 1px 4px; border-color: rgb(255 255 255 / .25); color: inherit; }
 
 /* Existing Three.js HTML annotations retain their bounded sizing. */
 /* Floating label over a citizen: what they are doing, then their name. It grows a little while you look at them. */
@@ -283,6 +288,7 @@ kbd { font: 10px/1.4 var(--mono); padding: 1px 4px; border: 1px solid var(--line
   .caption { bottom: 223px; font-size: 10px; }
   .scene-hint { top: 276px; font-size: 10px; z-index: 4; width: max-content; max-width: 90vw; }
   .walking-as-chip { top: 265px; }
+  .walking-as-chip ~ .walk-hint { top: 307px; }
   .terminal-cloud { width: min(290px, 75vw); }
   .terminal-cloud pre { font-size: 9px; max-height: 95px; }
   .terminal-cloud.compact { display: none; }
@@ -336,11 +342,6 @@ kbd { font: 10px/1.4 var(--mono); padding: 1px 4px; border: 1px solid var(--line
 .node-list li i { width: 8px; height: 8px; border-radius: 50%; background: #2f9e6a; }
 .node-list li.down i { background: #b8443a; }
 .node-list li span { color: var(--muted); font-size: 10.5px; }
-.walk-hint { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: center; }
-.walk-hint kbd { font: 600 10px var(--mono, ui-monospace); padding: 1px 5px; border-radius: 4px; background: rgb(255 255 255 / .18); }
-.walk-hint b { flex-basis: 100%; text-align: center; font-weight: 500; color: #ffd58a; }
-.walking-as-chip { position: absolute; top: 116px; left: 50%; z-index: 5; transform: translateX(-50%); display: flex; align-items: center; gap: 5px; width: max-content; max-width: 90vw; padding: 6px 10px; border: 1px solid rgb(255 255 255 / .22); border-radius: 999px; background: rgb(34 61 75 / .94); color: #fffaf0; box-shadow: 0 4px 16px rgb(20 35 43 / .18); font-size: 10px; }
-.walking-as-chip kbd { padding: 1px 4px; border-color: rgb(255 255 255 / .25); color: inherit; }
 .marker-name.you { background: #ffcf5a; color: #2a2112; font-weight: 700; }
 #walk-toggle[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
 .term-popup { position: fixed; inset: 0; z-index: 400; display: flex; flex-direction: column; background: #0a0a0f; color: #cdd6f4; }

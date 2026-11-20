@@ -35,6 +35,7 @@ export async function refreshFleet() {
       live: { ...previous.live, ...Object.fromEntries(changes.map(a => [a.botId, a])) },
       walkingAs: bots.some(bot => bot.id === previous.walkingAs) ? previous.walkingAs : null,
       selected: bots.some(bot => bot.id === previous.selected) ? previous.selected : null,
+      terminalFull: bots.some(bot => bot.id === previous.terminalFull) ? previous.terminalFull : null,
     });
     announce(changes);
   } catch (error) {
@@ -50,7 +51,7 @@ export async function refreshFleet() {
 
 export function setPreview(enabled: boolean) {
   ++generation; controller?.abort();
-  setOffice({ terminals: {} });
+  setOffice({ terminals: {}, terminalFull: null });
   if (enabled) {
     setOffice({ ...previewFleet(), preview: true, walkingAs: null, loading: false, connected: false, error: "", selected: null, live: {}, feed: [], manual: { kind: "overview" }, manualAt: Date.now() });
   } else {

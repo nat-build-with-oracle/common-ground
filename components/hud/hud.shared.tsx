@@ -4,6 +4,7 @@ import { useEffect, useRef, type ReactNode } from "react";
 import type { OracleBot, OracleStatus } from "@/lib/fleet-types";
 import type { HudPanel, ResidentFilter } from "@/lib/hud";
 import { setOffice, useOffice } from "../store";
+import { matchActive } from "../game/football/football.store";
 import { Icon } from "../Icons";
 import { sfx } from "../sound";
 
@@ -29,6 +30,7 @@ export function visitZone(id?: string) {
   setOffice({ hudPanel: null, selected: null, manual: id ? { kind: "zone", id } : { kind: "overview" }, manualAt: Date.now(), ...(walking && id ? { travel: id } : {}) });
 }
 export function walkAs(id: string) {
+  if (matchActive()) return;
   setOffice({ walking: true, walkingAs: id, selected: null, hudPanel: null, atlasOpen: false, manual: null, manualAt: Date.now() });
   sfx("pop");
 }

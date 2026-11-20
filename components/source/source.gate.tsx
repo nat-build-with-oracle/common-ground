@@ -20,7 +20,8 @@ export default function SourceGate() {
   useEffect(() => {
     if (!HOSTED || preview) return;
     const ready = choice.kind === "host" && !!hostToken(choice.origin);
-    if (!ready || (!loading && auth !== "ok")) { setPreview(true); startWalking(); }
+    // With a saved token, keep polling through transient roster failures. A refusal clears the token.
+    if (!ready) { setPreview(true); startWalking(); }
   }, [auth, preview, loading]); // eslint-disable-line react-hooks/exhaustive-deps
   // A refused token brings the card back open, with the reason in its header.
   useEffect(() => { if (auth === "rejected") setOpen(true); }, [auth]);

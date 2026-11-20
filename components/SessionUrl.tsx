@@ -1,59 +1,63 @@
 "use client";
 import { useEffect } from "react";
-import { flagOn, parseSessionPath, resolveSession, sessionPath, terminalOpen, withWalking, withTerminal } from "@/lib/session-url";
+import { restoreSession, sessionPath, withWalking, withTerminal } from "@/lib/session-url";
+import { matchActive } from "./game/football/football.store";
 import { setOffice, useOffice } from "./store";
 
-// Keeps the address bar and the selected citizen in step: /s/<fleet id> <-> `selected`.
-// Read-only: it only selects an agent that is already in the connected roster.
-function show(route: ReturnType<typeof parseSessionPath>) {
-  if (route.kind === "none") return setOffice({ selected: null, sessionNotice: null, terminalFull: null });
-  const found = route.kind === "id" ? resolveSession(route.id, useOffice.getState().bots) : { kind: "missing" as const };
-  if (found.kind === "live") setOffice({ selected: found.bot.id, sessionNotice: null, manual: null, hudPanel: null, terminalFull: terminalOpen(window.location.search) ? found.bot.id : null });
-  else setOffice({ selected: null, sessionNotice: { id: route.kind === "id" ? route.id : "", reason: found.kind } });
+// Keeps the address bar, selected citizen, walking identity and terminal in step.
+// Read-only: URL ids are accepted only when they already exist in the connected roster.
+function show(delayHuman = false) {
+  const state = useOffice.getState();
+  const restored = restoreSession(window.location.pathname, window.location.search, state.bots);
+  const football = matchActive();
+  const walkingAs = football ? null : restored.walkingAs;
+  setOffice({
+    selected: restored.selected, sessionNotice: restored.notice,
+    terminalFull: state.preview || (restored.terminalFull === restored.walkingAs && !walkingAs) ? null : restored.terminalFull,
+    walking: football ? state.walking : restored.walking && (!!walkingAs || !delayHuman), walkingAs,
+    manual: null, hudPanel: null, ...(restored.walking && !football ? { manualAt: Date.now() } : {}),
+  });
+  if (restored.walking && !restored.walkingAs && !football && delayHuman) startWalking(3000, !!restored.selected);
 }
 
 /** Start walking the way a visitor arrives: a beat of the god view, then the camera flies down to you. */
-export function startWalking(delayMs = 3000) {
+export function startWalking(delayMs = 3000, preserveSelection = false) {
   const initialPick = useOffice.getState().manualAt;
   window.setTimeout(() => {
     const state = useOffice.getState();
     if (state.walking || state.manualAt !== initialPick) return;
-    setOffice({ walking: true, walkingAs: null, selected: null, hudPanel: null, atlasOpen: false, manual: null, manualAt: Date.now() });
+    setOffice({ walking: true, walkingAs: null, ...(!preserveSelection ? { selected: null } : {}), hudPanel: null, atlasOpen: false, manual: null, manualAt: Date.now() });
   }, delayMs);
 }
 
+export function followSessionUrl() {
+  let ready = false;
+  const sync = () => {
+    const state = useOffice.getState();
+    if (!ready) {
+      // A failed request cannot prove that a URL resident is absent. Wait for a successful roster response.
+      if (!state.updatedAt) return;
+      ready = true;
+      return show(true);
+    }
+    const path = state.selected ? sessionPath(state.selected) : state.sessionNotice ? window.location.pathname : "/";
+    const terminalOpen = !!state.terminalFull && (state.terminalFull === state.selected || state.terminalFull === state.walkingAs);
+    const possessedPane = path !== "/" && state.terminalFull === state.walkingAs && state.walkingAs !== state.selected;
+    const search = withTerminal(window.location.search, terminalOpen, possessedPane);
+    const walk = withWalking(search, state.walking, state.walkingAs);
+    if (state.selected && state.sessionNotice) return setOffice({ sessionNotice: null });
+    // Places and terminals are history steps (back/forward); walking only rewrites the address.
+    if (window.location.pathname + withWalking(window.location.search, false, null) !== path + withWalking(search, false, null)) window.history.pushState(null, "", path + walk);
+    else if (window.location.pathname + window.location.search !== path + walk) window.history.replaceState(null, "", path + walk);
+  };
+  const onPop = () => { if (ready) show(); };
+  const unsubscribe = useOffice.subscribe(sync);
+  window.addEventListener("popstate", onPop);
+  sync();
+  return () => { unsubscribe(); window.removeEventListener("popstate", onPop); };
+}
+
 export default function SessionUrl() {
-  useEffect(() => {
-    let ready = false;
-    const initial = parseSessionPath(window.location.pathname);
-    const sync = () => {
-      const state = useOffice.getState();
-      if (!ready) {
-        // wait for the first roster answer before judging whether the pane exists
-        if (state.loading || (!state.updatedAt && !state.error)) return;
-        ready = true;
-        if (flagOn(window.location.search, "walk") && initial.kind === "none") {
-          const id = new URLSearchParams(window.location.search).get("as");
-          if (id && state.bots.some(bot => bot.id === id)) {
-            return setOffice({ walking: true, walkingAs: id, manual: null, manualAt: Date.now() });
-          }
-          startWalking();
-        }
-        return show(initial);
-      }
-      const path = state.selected ? sessionPath(state.selected) : state.sessionNotice ? window.location.pathname : "/";
-      const search = withTerminal(window.location.search, !!state.terminalFull && state.terminalFull === state.selected);
-      const walk = withWalking(search, state.walking, state.walkingAs);
-      if (state.selected && state.sessionNotice) return setOffice({ sessionNotice: null });
-      // Places and terminals are history steps (back/forward); walking only rewrites the address.
-      if (window.location.pathname + withWalking(window.location.search, false, null) !== path + withWalking(search, false, null)) window.history.pushState(null, "", path + walk);
-      else if (window.location.pathname + window.location.search !== path + walk) window.history.replaceState(null, "", path + walk);
-    };
-    const onPop = () => { if (ready) show(parseSessionPath(window.location.pathname)); };
-    const unsubscribe = useOffice.subscribe(sync);
-    window.addEventListener("popstate", onPop);
-    sync();
-    return () => { unsubscribe(); window.removeEventListener("popstate", onPop); };
-  }, []);
+  useEffect(() => followSessionUrl(), []);
   return null;
 }

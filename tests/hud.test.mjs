@@ -82,6 +82,9 @@ test('command palette: fuzzy finds citizens, places and actions; terminals only 
   assert.ok(live.some(item => item.action.kind === 'terminal' && item.action.id === 'a'));
   assert.ok(!paletteItems({ bots, zones, preview: true, walking: false, music: false }).some(item => item.action.kind === 'terminal'));
   assert.deepEqual(rank(live, 'walk as thor', item => `${item.label} ${item.search}`)[0].action, { kind: 'walkAs', id: 'b' });
+  const duringMatch = paletteItems({ bots, zones, preview: false, walking: true, music: false, football: true }).find(item => item.action.kind === 'walkAs' && item.action.id === 'b');
+  assert.equal(duringMatch.disabled, true);
+  assert.match(duringMatch.hint, /Unavailable during a football match/);
   assert.ok(paletteItems({ bots, zones, preview: true, walking: false, music: false }).some(item => item.action.kind === 'walkAs' && item.action.id === 'a'));
   assert.equal(rank(live, 'music', item => `${item.label} ${item.search}`)[0].action.kind, 'music');
 });

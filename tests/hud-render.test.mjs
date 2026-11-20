@@ -39,8 +39,10 @@ const { default: TownMap } = await import('../components/TownMap.tsx');
 const { loadTheme, residentFigureVisible, setScrollWheelMode, useOffice } = await import('../components/store.ts');
 const { stopWalking, toggleWalk, visitZone, walkAs } = await import('../components/hud/hud.shared.tsx');
 const { handleHudKey } = await import('../components/hud/hud.keys.ts');
+const { useFootball } = await import('../components/game/football/football.store.ts');
 const { buildWorld } = await import('../components/world.ts');
 const initial = useOffice.getState();
+const initialFootball = useFootball.getState();
 const render = (state = {}) => { useOffice.setState({ ...initial, ...state }, true); return renderToStaticMarkup(React.createElement(Hud)); };
 
 test('walk controls enter, switch, and exit oracle bodies without retaining stale identity', () => {
@@ -74,16 +76,24 @@ test('walk controls enter, switch, and exit oracle bodies without retaining stal
   assert.equal(useOffice.getState().walkingAs, null);
 });
 
-test('oracle shortcuts target the possessed pane, keep preview terminal-free, and release on Esc', () => {
+test('Enter targets the visible dossier and E targets the possessed pane', () => {
   const press = key => handleHudKey({ key, target: null, preventDefault() {} });
-  useOffice.setState({ ...initial, selected: 'oracle-a' }, true);
+  const bots = ['oracle-a', 'oracle-b'].map(id => ({ id, name: id, status: 'idle', href: '' }));
+  useOffice.setState({ ...initial, bots, selected: 'oracle-a' }, true);
   press('h');
   useOffice.setState({ selected: 'oracle-b' });
-  for (const key of ['e', 'Enter']) {
-    press(key);
-    assert.equal(useOffice.getState().terminalFull, 'oracle-a');
-    useOffice.setState({ terminalFull: null });
-  }
+  const dossier = renderToStaticMarkup(React.createElement(Hud));
+  assert.match(dossier, /<h3>oracle-b<\/h3>/);
+  assert.match(dossier, /Open full terminal <kbd>Enter<\/kbd>/);
+  press('Enter');
+  assert.equal(useOffice.getState().terminalFull, 'oracle-b');
+  useOffice.setState({ terminalFull: null });
+  press('e');
+  assert.equal(useOffice.getState().terminalFull, 'oracle-a');
+  useOffice.setState({ terminalFull: null, selected: null });
+  press('Enter');
+  assert.equal(useOffice.getState().terminalFull, 'oracle-a');
+  useOffice.setState({ terminalFull: null });
   useOffice.setState({ preview: true });
   press('e');
   press('Enter');
@@ -123,16 +133,39 @@ test('all field books render with named close controls and explicit empty/previe
 });
 test('resident surfaces offer walk-as and the possessed HUD keeps live status visible', () => {
   const bot = { id: 'beta', name: 'beta-oracle', color: '#f09b82', title: 'Codex', sectionId: null, status: 'blocked', working: false, seenAt: Date.now(), source: 'herdr', host: 'm5', runtime: 'codex', pane: '%12', project: 'common-ground', href: '' };
+  const other = { ...bot, id: 'gamma', name: 'gamma-oracle', pane: '%13' };
   const residents = render({ bots: [bot], hudPanel: 'residents' });
   assert.match(residents, /aria-label="Walk as beta-oracle"/);
 
   const walking = render({ bots: [bot], walking: true, walkingAs: bot.id });
   assert.match(walking, /class="walking-as-chip" role="status"/);
-  assert.match(walking, /Walking as <b>beta-oracle<\/b> · Needs input · <kbd>Esc<\/kbd> to return/);
+  assert.match(walking, /Walking as <b>beta-oracle<\/b> · Needs input · <kbd>Esc<\/kbd> return to overview/);
   assert.match(walking, /<kbd>E<\/kbd> \/ <kbd>Enter<\/kbd> terminal/);
+
+  const selected = render({ bots: [bot, other], walking: true, walkingAs: bot.id, selected: other.id });
+  assert.match(selected, /<kbd>E<\/kbd> beta-oracle terminal · <kbd>Enter<\/kbd> gamma-oracle terminal/);
+  assert.match(selected, /<kbd>H<\/kbd> walk as gamma-oracle/);
+  assert.equal((selected.match(/<kbd>Esc<\/kbd> return to overview/g) ?? []).length, 1);
+  assert.doesNotMatch(selected, /<kbd>H<\/kbd> stop/);
 
   const preview = render({ bots: [bot], walking: true, walkingAs: bot.id, preview: true });
   assert.doesNotMatch(preview, /<kbd>Enter<\/kbd> terminal/);
+});
+test('football disables walk-as entry points and explains why', () => {
+  const bot = { id: 'beta', name: 'beta-oracle', color: '#f09b82', title: 'Codex', sectionId: null, status: 'idle', working: false, seenAt: Date.now(), source: 'herdr', host: 'm5', runtime: 'codex', pane: '%12', project: 'common-ground', href: '' };
+  useFootball.setState({ ...initialFootball, match: { ...initialFootball.match, phase: 'playing' } }, true);
+  try {
+    const residents = render({ bots: [bot], hudPanel: 'residents', walking: true, walkingAs: null });
+    assert.match(residents, /Walk as unavailable during a match/);
+    assert.match(residents, /class="resident-walk" disabled="" aria-label="Walk as beta-oracle"/);
+    walkAs(bot.id);
+    assert.equal(useOffice.getState().walkingAs, null);
+
+    const dossier = render({ bots: [bot], selected: bot.id, walking: true, walkingAs: null });
+    assert.match(dossier, /disabled=""[^>]*>.*Walk as unavailable during a match/);
+  } finally {
+    useFootball.setState(initialFootball, true);
+  }
 });
 test('scroll wheel setting renders all modes and persists the selected mode', () => {
   const markup = render({ hudPanel: 'settings', scrollWheelMode: 'auto' });
@@ -160,4 +193,82 @@ test('travel deck lists the eleven places of the nation (keys 1–0 reach the fi
   for (const name of ['Whole nation', 'Parliament', 'Federation', 'Work', 'Home', 'Community', 'Petitions', 'Café', 'Brewery', 'Garden', 'Sport']) assert.ok(markup.includes(name));
   assert.match(markup, /aria-expanded="true" aria-controls="atlas-map"/);
   assert.match(markup, /Simulated families/);
+});
+
+test('session links survive a failed roster request, a fresh tab and terminal history traversal', async () => {
+  const { followSessionUrl } = await import('../components/SessionUrl.tsx');
+  const originalWindow = Object.getOwnPropertyDescriptor(globalThis, 'window');
+  const initialUrl = 'https://town.test/s/B?walk=1&as=A';
+  let location = new URL(initialUrl);
+  const history = [location.href];
+  let index = 0;
+  const browser = new EventTarget();
+  Object.assign(browser, {
+    history: {
+      pushState(_, __, url) {
+        location = new URL(url, location);
+        history.splice(++index, Infinity, location.href);
+      },
+      replaceState(_, __, url) {
+        location = new URL(url, location);
+        history[index] = location.href;
+      },
+    },
+  });
+  Object.defineProperty(browser, 'location', { get: () => location });
+  Object.defineProperty(globalThis, 'window', { configurable: true, value: browser });
+  const roster = { updatedAt: 1, loading: false, bots: [{ id: 'A', status: 'idle' }, { id: 'B', status: 'idle' }] };
+  const identities = () => {
+    const { selected, walkingAs, terminalFull } = useOffice.getState();
+    return [selected, walkingAs, terminalFull];
+  };
+  let stop;
+  try {
+    useOffice.setState(initial, true);
+    stop = followSessionUrl();
+    useOffice.setState({ loading: false, error: 'Temporary network failure' });
+    assert.equal(location.href, initialUrl);
+    useOffice.setState({ ...roster, error: '' });
+    assert.deepEqual(identities(), ['B', 'A', null]);
+    handleHudKey({ key: 'e', target: null, preventDefault() {} });
+    assert.equal(location.searchParams.get('t'), '1');
+    assert.equal(index, 1);
+    stop();
+    useOffice.setState({ ...initial, ...roster }, true);
+    stop = followSessionUrl();
+    assert.deepEqual(identities(), ['B', 'A', 'A']);
+    location = new URL(history[--index]);
+    browser.dispatchEvent(new Event('popstate'));
+    assert.deepEqual(identities(), ['B', 'A', null]);
+    location = new URL(history[++index]);
+    browser.dispatchEvent(new Event('popstate'));
+    assert.deepEqual(identities(), ['B', 'A', 'A']);
+    assert.equal(history.length, 2);
+  } finally {
+    stop?.();
+    useOffice.setState(initial, true);
+    if (originalWindow) Object.defineProperty(globalThis, 'window', originalWindow);
+    else delete globalThis.window;
+  }
+});
+
+test('roster removal releases possession and its open terminal in the same update', async t => {
+  const { refreshFleet } = await import('../components/store.ts');
+  const bots = ['A', 'B'].map(id => ({ id, status: 'idle', source: 'herdr' }));
+  useOffice.setState({ ...initial, bots, walking: true, walkingAs: 'A', terminalFull: 'A', selected: 'B' }, true);
+  const remaining = bots.slice(1);
+  t.mock.method(globalThis, 'fetch', async () => Response.json({
+    bots: remaining, sections: [], sources: [{ id: 'herdr', status: 'connected' }], readOnly: true, updatedAt: 1,
+  }));
+  const observed = [];
+  const unsubscribe = useOffice.subscribe(state => {
+    if (state.updatedAt) observed.push([state.walkingAs, state.terminalFull, state.selected]);
+  });
+  try {
+    await refreshFleet();
+    assert.deepEqual(observed, [[null, null, 'B']]);
+  } finally {
+    unsubscribe();
+    useOffice.setState(initial, true);
+  }
 });

@@ -12,7 +12,7 @@ export function handleHudKey(event: KeyboardEvent) {
   if (event.defaultPrevented || state.paletteOpen || state.terminalFull) return; // their own keyboard
   const action = hudShortcut({ key: event.key, ctrlKey: event.ctrlKey, metaKey: event.metaKey, altKey: event.altKey, shiftKey: event.shiftKey, repeat: event.repeat, target: event.target && event.target instanceof HTMLElement ? event.target : null });
   if (action === "open-terminal" || action === "interact") {
-    const target = action === "open-terminal" ? state.walkingAs ?? state.selected : state.walkingAs;
+    const target = action === "open-terminal" ? state.selected ?? state.walkingAs : state.walkingAs;
     if (target && !state.preview && !(action === "interact" && matchActive())) {
       event.preventDefault();
       setOffice({ terminalFull: target });

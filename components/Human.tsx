@@ -40,8 +40,8 @@ export default function Human({ world, nav }: { world: World; nav: Nav | null })
     const oracle = walkingAs ? nav.rts.get(walkingAs) : undefined;
     const at = oracle ? { x: oracle.x, z: oracle.z } : lastSpot(world) ?? humanSpawn(world);
     setRt(nav.spawnPlayer(at.x, at.z));
-    const save = window.setInterval(() => { const me = nav.playerRt; if (me) try { sessionStorage.setItem(SPOT, JSON.stringify({ x: +me.x.toFixed(2), z: +me.z.toFixed(2) })); } catch { /* storage blocked */ } }, 1000);
-    return () => { window.clearInterval(save); nav.removePlayer(); setRt(undefined); };
+    const save = !walkingAs ? window.setInterval(() => { const me = nav.playerRt; if (me) try { sessionStorage.setItem(SPOT, JSON.stringify({ x: +me.x.toFixed(2), z: +me.z.toFixed(2) })); } catch { /* storage blocked */ } }, 1000) : undefined;
+    return () => { if (save !== undefined) window.clearInterval(save); nav.removePlayer(); setRt(undefined); };
   }, [walking, walkingAs, nav, world]);
 
   const travel = useOffice(s => s.travel), walkTo = useOffice(s => s.walkTo), selected = useOffice(s => s.selected);

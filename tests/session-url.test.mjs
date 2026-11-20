@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { sessionPath, parseSessionPath, resolveSession, withWalking } from '../lib/session-url.ts';
+import { sessionPath, parseSessionPath, resolveSession, restoreSession, withTerminal, withWalking } from '../lib/session-url.ts';
 import { readTerminal } from '../lib/terminal-server.ts';
 import { mapHerdr, fleetSnapshot } from '../lib/fleet.ts';
 const config = [{id:'herdr',name:'Herdr',url:'http://127.0.0.1:3457',token:'server-secret'}];
@@ -58,4 +58,41 @@ test('walking URLs preserve other flags and clear the resident on return', () =>
   assert.equal(new URLSearchParams(search).get('as'), id);
   assert.equal(withWalking(search, true, null), '?t=1&walk=1');
   assert.equal(withWalking(search, false, id), '?t=1');
+});
+
+test('selection and walking identity restore independently from one URL', () => {
+  const selected = bots[1].id;
+  const restored = restoreSession(sessionPath(selected), `?walk=1&as=${encodeURIComponent(id)}`, bots);
+  assert.equal(restored.selected, selected);
+  assert.equal(restored.walking, true);
+  assert.equal(restored.walkingAs, id);
+});
+
+test('a possessed resident owns t=1 when no dossier terminal is selected', () => {
+  const restored = restoreSession('/', `?walk=1&as=${encodeURIComponent(id)}&t=1`, bots);
+  assert.equal(restored.selected, null);
+  assert.equal(restored.walkingAs, id);
+  assert.equal(restored.terminalFull, id);
+});
+
+test('a selected dossier remains the t=1 target while walking as another resident', () => {
+  const selected = bots[1].id;
+  const restored = restoreSession(sessionPath(selected), `?walk=1&as=${encodeURIComponent(id)}&t=1`, bots);
+  assert.equal(restored.walkingAs, id);
+  assert.equal(restored.terminalFull, selected);
+});
+
+test('terminal=as disambiguates E from Enter when selection and possession differ', () => {
+  const selected = bots[1].id;
+  const search = withTerminal(`?walk=1&as=${encodeURIComponent(id)}`, true, true);
+  assert.equal(new URLSearchParams(search).get('t'), '1');
+  assert.equal(restoreSession(sessionPath(selected), search, bots).terminalFull, id);
+  assert.equal(restoreSession(sessionPath(selected), withTerminal(search, true), bots).terminalFull, selected);
+});
+
+test('a missing or offline dossier cannot redirect its default terminal to the possessed resident', () => {
+  const search = `?walk=1&as=${encodeURIComponent(id)}&t=1`;
+  assert.equal(restoreSession('/s/missing', search, bots).terminalFull, null);
+  assert.equal(restoreSession(sessionPath(bots[1].id), search, bots.map(bot => bot.id === bots[1].id ? { ...bot, status: 'offline' } : bot)).terminalFull, null);
+  assert.equal(restoreSession('/s/missing', `${search}&terminal=as`, bots).terminalFull, id);
 });

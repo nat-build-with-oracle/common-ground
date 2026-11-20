@@ -27,7 +27,7 @@ export default function CommandPalette({ zones }: { zones: { id: string; name: s
   useEffect(() => { list.current?.querySelector(`[data-index="${cursor}"]`)?.scrollIntoView({ block: "nearest" }); }, [cursor]);
   if (!open) return null;
 
-  const choose = (item?: PaletteItem) => { if (item) runAction(item.action); };
+  const choose = (item?: PaletteItem) => { if (item && !item.disabled) runAction(item.action); };
   const onKey = (event: React.KeyboardEvent) => {
     if (event.key === "Escape") { event.preventDefault(); setOffice({ paletteOpen: false }); }
     else if (event.key === "ArrowDown") { event.preventDefault(); setCursor(value => Math.min(results.length - 1, value + 1)); }
@@ -40,7 +40,7 @@ export default function CommandPalette({ zones }: { zones: { id: string; name: s
       <label className="palette-input"><Icon name="search" /><input ref={input} value={query} onChange={event => { setQuery(event.target.value); setCursor(0); }} onKeyDown={onKey} placeholder="Find a citizen, a place, or something to do…" aria-label="Search" aria-controls="palette-results" /><kbd>Esc</kbd></label>
       <ul id="palette-results" ref={list} role="listbox">{results.map((item, index) => {
         const heading = item.group !== group ? (group = item.group) : null;
-        return <li key={item.key}>{heading && <div className="palette-group">{heading}</div>}<button data-index={index} role="option" aria-selected={index === cursor} className={index === cursor ? "active" : ""} onMouseEnter={() => setCursor(index)} onClick={() => choose(item)}><b>{item.label}</b><small>{item.hint}</small></button></li>;
+        return <li key={item.key}>{heading && <div className="palette-group">{heading}</div>}<button data-index={index} role="option" aria-selected={index === cursor} className={index === cursor ? "active" : ""} disabled={item.disabled} onMouseEnter={() => setCursor(index)} onClick={() => choose(item)}><b>{item.label}</b><small>{item.hint}</small></button></li>;
       })}{!results.length && <li className="palette-empty">Nothing matches “{query}”.</li>}</ul>
       <footer><kbd>↑↓</kbd> choose <kbd>Enter</kbd> go <kbd>⌘K</kbd> toggle</footer>
     </div>
