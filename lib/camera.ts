@@ -10,38 +10,65 @@ export function townFrame(width: number, depth: number, aspect: number, fov = 38
 }
 
 export const WHEEL_BURST_GAP = 150;
+export const WHEEL_DECISION_MS = 40;
 export const WHEEL_PIXELS_PER_LINE = 32;
 export const WHEEL_ZOOM_SENSITIVITY = .0016;
 export const PINCH_ZOOM_SENSITIVITY = .01;
 
 export type WheelAction = "pan" | "pinch" | "wheel";
+export type WheelBurstAction = WheelAction | "pending";
 export type ScrollWheelMode = "auto" | "zoom" | "pan";
 export type WheelBurst = {
-  action: WheelAction;
+  action: WheelBurstAction;
   ctrlKey: boolean;
+  deltaMode: number;
+  deltaX: number;
+  deltaY: number;
   mode: ScrollWheelMode;
   shiftKey: boolean;
   timeStamp: number;
-  trackpadSeen: boolean;
 };
-type WheelSample = Pick<WheelEvent, "ctrlKey" | "deltaMode" | "deltaX" | "deltaY" | "shiftKey" | "timeStamp">;
+export type WheelSample = Pick<WheelEvent, "ctrlKey" | "deltaMode" | "deltaX" | "deltaY" | "shiftKey" | "timeStamp">;
 
-/** Keep momentum consistent unless modifiers, settings, or new trackpad evidence change the action. */
-export function classifyWheelBurst(event: WheelSample, previous?: WheelBurst, mode: ScrollWheelMode = "auto"): WheelBurst {
-  const trackpadSample = event.deltaX !== 0 || !Number.isInteger(event.deltaY);
-  const trackpadSeen = Boolean(previous?.trackpadSeen || trackpadSample);
-  const sameBurst = previous && event.timeStamp - previous.timeStamp <= WHEEL_BURST_GAP
+/** Whether an event belongs to the same unmodified hardware burst. */
+export function continuesWheelBurst(event: WheelSample, previous: WheelBurst | undefined, mode: ScrollWheelMode) {
+  return Boolean(previous && event.timeStamp - previous.timeStamp <= WHEEL_BURST_GAP
+    && event.deltaMode === previous.deltaMode
     && event.ctrlKey === previous.ctrlKey && event.shiftKey === previous.shiftKey
-    && mode === previous.mode;
+    && mode === previous.mode);
+}
 
-  const action = event.ctrlKey ? "pinch"
-    : event.shiftKey ? "pan"
-    : mode === "zoom" ? "wheel"
-    : mode === "pan" || trackpadSeen ? "pan"
-    : sameBurst ? previous.action
-    : event.deltaMode !== 0 || Math.abs(event.deltaY) >= 50 ? "wheel"
-    : "pan";
-  return { action, ctrlKey: event.ctrlKey, mode, shiftKey: event.shiftKey, timeStamp: event.timeStamp, trackpadSeen };
+/** Buffer an ambiguous first pixel sample, then keep one action through the burst's momentum. */
+export function classifyWheelBurst(event: WheelSample, previous?: WheelBurst, mode: ScrollWheelMode = "auto"): WheelBurst {
+  const prior = continuesWheelBurst(event, previous, mode) ? previous : undefined;
+  const pending = prior?.action === "pending" ? prior : undefined;
+  const trackpadSample = event.deltaX !== 0 || !Number.isInteger(event.deltaY);
+  let action: WheelBurstAction;
+  if (event.deltaMode !== 0) action = event.shiftKey || mode === "pan" ? "pan" : "wheel";
+  else if (event.ctrlKey) action = "pinch";
+  else if (event.shiftKey || mode === "pan") action = "pan";
+  else if (mode === "zoom") action = "wheel";
+  else if (prior && prior.action !== "pending") action = prior.action;
+  else if (pending) {
+    const inWindow = event.timeStamp - pending.timeStamp <= WHEEL_DECISION_MS;
+    action = inWindow && trackpadSample ? "pan" : settleWheelBurst(pending).action;
+  } else action = trackpadSample ? "pan" : "pending";
+
+  return {
+    action,
+    ctrlKey: event.ctrlKey,
+    deltaMode: event.deltaMode,
+    deltaX: event.deltaX + (pending?.deltaX ?? 0),
+    deltaY: event.deltaY + (pending?.deltaY ?? 0),
+    mode,
+    shiftKey: event.shiftKey,
+    timeStamp: event.timeStamp,
+  };
+}
+
+/** Resolve a lone ambiguous pixel sample after the brief evidence window closes. */
+export function settleWheelBurst(burst: WheelBurst): WheelBurst {
+  return burst.action === "pending" ? { ...burst, action: Math.abs(burst.deltaY) >= 50 ? "wheel" : "pan" } : burst;
 }
 
 /** Normalize browser wheel units into pixels before applying camera scaling. */

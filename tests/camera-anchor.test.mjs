@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { BoxGeometry, Group, Mesh, MeshBasicMaterial, PlaneGeometry, Raycaster, Scene, Vector3 } from 'three';
-import { townZoomAnchor } from '../components/office/office.camera-anchor.ts';
+import { createTownZoomAnchorCache, townZoomAnchor } from '../components/office/office.camera-anchor.ts';
 
 const material = new MeshBasicMaterial();
 
@@ -66,4 +66,39 @@ test('shallow ground fallback stays inside the town footprint', () => {
   const anchor = new Vector3();
   assert.equal(townZoomAnchor(ray, new Scene(), 20, 12, anchor), true);
   assert.deepEqual(anchor.toArray(), [10, 0, 6]);
+});
+
+test('cursor anchor cache raycasts once until the pointer moves or the burst resets', () => {
+  const scene = new Scene();
+  scene.add(ground());
+  scene.updateMatrixWorld(true);
+  const ray = new Raycaster(new Vector3(0, 10, 0), new Vector3(0, -1, 0));
+  const anchor = new Vector3(), cache = createTownZoomAnchorCache();
+  const intersectObjects = ray.intersectObjects.bind(ray);
+  let raycasts = 0;
+  ray.intersectObjects = (...args) => { raycasts += 1; return intersectObjects(...args); };
+
+  assert.equal(cache.resolve(100, 100, ray, scene, 20, 20, anchor), true);
+  anchor.set(9, 9, 9);
+  assert.equal(cache.resolve(103, 102, ray, scene, 20, 20, anchor), true);
+  assert.deepEqual(anchor.toArray(), [0, 0, 0]);
+  assert.equal(raycasts, 1);
+
+  cache.resolve(105, 100, ray, scene, 20, 20, anchor);
+  assert.equal(raycasts, 2, 'pointer movement beyond four pixels refreshes the anchor');
+  cache.reset();
+  cache.resolve(105, 100, ray, scene, 20, 20, anchor);
+  assert.equal(raycasts, 3, 'a new zoom burst refreshes the anchor');
+});
+
+test('cursor anchor cache also reuses misses within a burst', () => {
+  const scene = new Scene(), ray = new Raycaster(new Vector3(0, 10, 0), new Vector3(0, 1, 0));
+  const anchor = new Vector3(), cache = createTownZoomAnchorCache();
+  const intersectObjects = ray.intersectObjects.bind(ray);
+  let raycasts = 0;
+  ray.intersectObjects = (...args) => { raycasts += 1; return intersectObjects(...args); };
+
+  assert.equal(cache.resolve(10, 10, ray, scene, 20, 20, anchor), false);
+  assert.equal(cache.resolve(12, 12, ray, scene, 20, 20, anchor), false);
+  assert.equal(raycasts, 1);
 });

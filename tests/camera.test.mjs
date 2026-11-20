@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { classifyWheelBurst, townFrame, wheelPixels, wheelZoomFactor } from '../lib/camera.ts';
+import { classifyWheelBurst, continuesWheelBurst, settleWheelBurst, townFrame, wheelPixels, wheelZoomFactor } from '../lib/camera.ts';
 
 test('town overview fits all ground corners in landscape, tall and mobile canvases', () => {
   for (const [width, depth] of [[24,24], [90,75], [140,120]]) for (const aspect of [2, 1.4, .65, .3]) {
@@ -24,11 +24,11 @@ test('wheel burst classification distinguishes trackpad, mouse wheel and pinch',
   const diagonal = classifyWheelBurst({ ...sample, deltaX: 8, deltaY: 10 });
   assert.equal(diagonal.action, 'pan');
   const notch = { ...sample, deltaY: 100 };
-  const wheel = classifyWheelBurst(notch);
+  const wheel = settleWheelBurst(classifyWheelBurst(notch));
   assert.equal(wheel.action, 'wheel');
   const momentum = classifyWheelBurst({ ...notch, deltaY: 12, timeStamp: 120 }, wheel);
   assert.equal(momentum.action, 'wheel');
-  assert.equal(classifyWheelBurst({ ...notch, timeStamp: 400 }, momentum).action, 'wheel');
+  assert.equal(classifyWheelBurst({ ...notch, timeStamp: 400 }, momentum).action, 'pending');
   assert.equal(classifyWheelBurst({ ...notch, shiftKey: true }).action, 'pan');
   assert.equal(classifyWheelBurst({ ...sample, deltaMode: 1, deltaY: 3 }).action, 'wheel');
   assert.equal(classifyWheelBurst({ ...sample, deltaMode: 2, deltaY: 1 }).action, 'wheel');
@@ -42,7 +42,7 @@ test('modifier changes start a new wheel burst without waiting', () => {
   assert.equal(pinch.action, 'pinch', 'pan -> pinch');
   assert.equal(classifyWheelBurst({ ...base, timeStamp: 40 }, pinch).action, 'pan', 'pinch -> pan');
 
-  const notch = classifyWheelBurst({ ...base, deltaX: 0, deltaY: 100, timeStamp: 200 });
+  const notch = settleWheelBurst(classifyWheelBurst({ ...base, deltaX: 0, deltaY: 100, timeStamp: 200 }));
   assert.equal(notch.action, 'wheel');
   assert.equal(classifyWheelBurst({ ...base, deltaX: 0, deltaY: 100, shiftKey: true, timeStamp: 220 }, notch).action, 'pan', 'notch -> shift-pan');
 });
@@ -56,23 +56,44 @@ test('wheel preference resolves ambiguous mouse and trackpad samples', () => {
   assert.equal(classifyWheelBurst(trackpadLike, undefined, 'zoom').action, 'wheel');
   assert.equal(classifyWheelBurst(mouseLike, undefined, 'pan').action, 'pan');
   assert.equal(classifyWheelBurst(trackpadLike, undefined, 'pan').action, 'pan');
-  assert.equal(classifyWheelBurst(mouseLike, undefined, 'auto').action, 'pan');
-  assert.equal(classifyWheelBurst(trackpadLike, undefined, 'auto').action, 'wheel');
+  assert.equal(classifyWheelBurst(mouseLike, undefined, 'auto').action, 'pending');
+  assert.equal(classifyWheelBurst(trackpadLike, undefined, 'auto').action, 'pending');
 });
 
-test('auto mode remembers trackpad evidence for the camera session', () => {
+test('auto mode buffers ambiguous starts and locks the chosen action through momentum', () => {
   const base = { ctrlKey: false, shiftKey: false, deltaMode: 0, deltaX: 0, deltaY: 60, timeStamp: 0 };
   const initiallyAmbiguous = classifyWheelBurst(base);
-  assert.equal(initiallyAmbiguous.action, 'wheel');
+  assert.equal(initiallyAmbiguous.action, 'pending');
+  assert.equal(settleWheelBurst(initiallyAmbiguous).action, 'wheel');
 
   for (const evidence of [{ deltaY: 2.5 }, { deltaX: 1 }]) {
     const detected = classifyWheelBurst({ ...base, ...evidence, timeStamp: 20 }, initiallyAmbiguous);
     assert.equal(detected.action, 'pan');
+    assert.equal(detected.deltaY, 60 + (evidence.deltaY ?? 60));
     for (const deltaY of [40, 60]) {
-      assert.equal(classifyWheelBurst({ ...base, deltaY, timeStamp: 300 }, detected).action, 'pan');
+      assert.equal(classifyWheelBurst({ ...base, deltaY, timeStamp: 30 }, detected).action, 'pan');
     }
     assert.equal(classifyWheelBurst({ ...base, timeStamp: 30 }, detected, 'zoom').action, 'wheel');
   }
+
+  const secondSample = classifyWheelBurst({ ...base, deltaY: 30, timeStamp: 20 }, initiallyAmbiguous);
+  assert.equal(secondSample.action, 'wheel');
+  assert.equal(secondSample.deltaY, 90);
+  assert.equal(classifyWheelBurst({ ...base, deltaX: 3, timeStamp: 30 }, secondSample).action, 'wheel');
+  assert.equal(settleWheelBurst(classifyWheelBurst({ ...base, deltaY: 8 })).action, 'pan');
+
+  const lateEvidence = classifyWheelBurst({ ...base, deltaX: 1, timeStamp: 41 }, initiallyAmbiguous);
+  assert.equal(lateEvidence.action, 'wheel', 'the decision window already closed');
+});
+
+test('line and page notches override prior trackpad evidence without reloading', () => {
+  const trackpad = classifyWheelBurst({ ctrlKey: false, shiftKey: false, deltaMode: 0, deltaX: 3, deltaY: 8, timeStamp: 0 });
+  assert.equal(trackpad.action, 'pan');
+
+  const lineNotch = classifyWheelBurst({ ctrlKey: false, shiftKey: false, deltaMode: 1, deltaX: 0, deltaY: 3, timeStamp: 20 }, trackpad);
+  assert.equal(lineNotch.action, 'wheel');
+  assert.equal(continuesWheelBurst({ ctrlKey: false, shiftKey: false, deltaMode: 1, deltaX: 0, deltaY: 3, timeStamp: 30 }, lineNotch, 'auto'), true);
+  assert.equal(classifyWheelBurst({ ctrlKey: true, shiftKey: false, deltaMode: 2, deltaX: 0, deltaY: 1, timeStamp: 30 }, lineNotch).action, 'wheel');
 });
 
 test('wheel steps normalize, accumulate smoothly, reverse exactly and cap large impulses', () => {

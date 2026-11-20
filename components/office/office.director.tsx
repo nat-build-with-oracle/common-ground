@@ -6,21 +6,18 @@ import { CameraControls, CameraControlsImpl } from "@react-three/drei";
 import { useFrame, useThree } from "@react-three/fiber";
 import { useEffect, useRef } from "react";
 import { PerspectiveCamera, Raycaster, Spherical, Vector2, Vector3 } from "three";
-import { classifyWheelBurst, townFrame, wheelPixels, wheelZoomFactor } from "@/lib/camera";
+import { classifyWheelBurst, continuesWheelBurst, settleWheelBurst, WHEEL_DECISION_MS, type WheelBurst, townFrame, wheelPixels, wheelZoomFactor } from "@/lib/camera";
 import type { Nav, Rt } from "../crowd";
 import { lookAt } from "../focus";
 import { ballCam } from "../game/football/football.store";
 import { setOffice, useOffice, type State } from "../store";
 import type { World } from "../world";
-import { townZoomAnchor } from "./office.camera-anchor";
+import { createTownZoomAnchorCache } from "./office.camera-anchor";
 
 const HOLD_AFTER_ORBIT = 15_000; // ms the camera leaves you alone after you drag or scroll it
 const FLY_DOWN = 2_500;          // ms of slow arrival when a walk starts from the god view
 const MANUAL_SMOOTH_MS = 350;
 const TOUR_STOP = 10_000;        // ms on each working citizen while touring
-
-// Wheel events have no device identifier. Keep Auto’s evidence for this page session.
-let lastWheelBurst: ReturnType<typeof classifyWheelBurst> | undefined;
 
 type Memory = { shot: string; holdUntil: number; manualUntil: number; followPausedUntil: number; nextAim: number; pickedAt: number; selected: string | null; walkingSince: number };
 /** Shots are keyed "bot:<id>", "zone:<id>", "overview", "player" or "match". */
@@ -60,9 +57,20 @@ export function Director({ world, nav }: { world: World; nav: Nav | null }) {
     const camera = controls.current!;
     const end = new Spherical();
     const hold = () => { memory.current.holdUntil = performance.now() + HOLD_AFTER_ORBIT; };
+    const pauseWalkingFollow = () => {
+      if (followedPlayer(useOffice.getState(), nav)) memory.current.followPausedUntil = memory.current.holdUntil;
+    };
+    const nativeControl = () => {
+      hold();
+      const action = CameraControlsImpl.ACTION;
+      if (camera.currentAction === action.TOUCH_DOLLY_TRUCK || camera.currentAction === action.TOUCH_TRUCK
+        || camera.currentAction === action.TOUCH_SCREEN_PAN || camera.currentAction === action.TOUCH_ZOOM_TRUCK)
+        pauseWalkingFollow();
+    };
     // Native ctrl-wheel changes lens zoom instead of distance, bypassing the town's dolly limits.
     camera.mouseButtons.wheel = CameraControlsImpl.ACTION.NONE;
     const ray = new Raycaster(), pointer = new Vector2(), anchor = new Vector3(), target = new Vector3();
+    const anchorCache = createTownZoomAnchorCache();
     const acceptsInput = () => {
       const state = useOffice.getState();
       return camera.enabled && !state.paletteOpen && !state.terminalFull && camera.camera instanceof PerspectiveCamera;
@@ -74,11 +82,16 @@ export function Director({ world, nav }: { world: World; nav: Nav | null }) {
     const dolly = (factor: number, x: number, y: number, rect: DOMRect) => {
       const radius = camera.getSpherical(end, true).radius;
       const next = Math.max(camera.minDistance, Math.min(camera.maxDistance, radius * factor));
+      const inspecting = performance.now() < memory.current.followPausedUntil;
+      if (inspecting && factor !== 1) {
+        hold();
+        pauseWalkingFollow();
+      }
       if (next === radius) return;
-      if (!followedPlayer(useOffice.getState(), nav)) {
+      if (inspecting || !followedPlayer(useOffice.getState(), nav)) {
         pointer.set(2 * (x - rect.left) / rect.width - 1, 1 - 2 * (y - rect.top) / rect.height);
         ray.setFromCamera(pointer, camera.camera);
-        if (townZoomAnchor(ray, scene, world.w, world.d, anchor)) {
+        if (anchorCache.resolve(x, y, ray, scene, world.w, world.d, anchor)) {
           // Scale the pending camera pose about the nearest visible town surface, including its target.
           camera.getTarget(target, true).lerp(anchor, 1 - next / radius);
           void camera.moveTo(target.x, target.y, target.z, true);
@@ -88,26 +101,50 @@ export function Director({ world, nav }: { world: World; nav: Nav | null }) {
       moved();
     };
     const safariGestures = "GestureEvent" in window;
-    const wheel = (event: WheelEvent) => {
-      if (!acceptsInput()) return;
-      const rect = canvas.getBoundingClientRect();
-      if (!rect.width || !rect.height) return;
-      const burst = classifyWheelBurst(event, lastWheelBurst, useOffice.getState().scrollWheelMode);
-      lastWheelBurst = burst;
-      if (event.ctrlKey && safariGestures) { event.preventDefault(); return; }
-      const dy = wheelPixels(event.deltaY, event.deltaMode, rect.height);
+    let lastWheelBurst: WheelBurst | undefined;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let flushPending: (() => void) | undefined;
+    const applyWheel = (burst: WheelBurst, x: number, y: number, rect: DOMRect) => {
+      const dy = wheelPixels(burst.deltaY, burst.deltaMode, rect.height);
       if (burst.action === "pan") {
-        if (!(event.deltaX || dy)) return;
-        event.preventDefault();
         const radius = camera.getSpherical(end, true).radius;
         const unit = 2 * radius * Math.tan((camera.camera as PerspectiveCamera).getEffectiveFOV() * Math.PI / 360) / rect.height;
-        void camera.truck(wheelPixels(event.deltaX, event.deltaMode, rect.height) * unit, dy * unit, true);
+        void camera.truck(wheelPixels(burst.deltaX, burst.deltaMode, rect.height) * unit, dy * unit, true);
         moved();
-        if (followedPlayer(useOffice.getState(), nav)) memory.current.followPausedUntil = memory.current.holdUntil;
+        pauseWalkingFollow();
       } else {
-        event.preventDefault();
-        dolly(wheelZoomFactor(dy, burst.action === "pinch"), event.clientX, event.clientY, rect);
+        dolly(wheelZoomFactor(dy, burst.action === "pinch"), x, y, rect);
       }
+    };
+    const wheel = (event: WheelEvent) => {
+      if (!acceptsInput()) return;
+      const deltaMode = event.deltaMode;
+      if (!(event.deltaX || event.deltaY)) return;
+      const rect = canvas.getBoundingClientRect();
+      if (!rect.width || !rect.height) return;
+      event.preventDefault();
+      if (deltaMode === 0 && event.ctrlKey && safariGestures) return;
+      const state = useOffice.getState(), mode = state.scrollWheelMode;
+      clearTimeout(timer);
+      if (!continuesWheelBurst(event, lastWheelBurst, mode)) {
+        flushPending?.();
+        anchorCache.reset();
+      }
+      flushPending = undefined;
+      const burst = classifyWheelBurst(event, lastWheelBurst, mode);
+      lastWheelBurst = burst;
+      if (burst.action !== "pending") {
+        applyWheel(burst, event.clientX, event.clientY, rect);
+        return;
+      }
+      flushPending = () => {
+        flushPending = undefined;
+        const current = useOffice.getState();
+        lastWheelBurst = settleWheelBurst(burst);
+        if (acceptsInput() && current.manualAt === state.manualAt && current.selected === state.selected)
+          applyWheel(lastWheelBurst, event.clientX, event.clientY, rect);
+      };
+      timer = setTimeout(flushPending, WHEEL_DECISION_MS);
     };
     // Safari trackpads publish cumulative scale. Physical touch already belongs to CameraControls.
     let previousScale: number | null = null, touchCount = 0;
@@ -119,6 +156,12 @@ export function Director({ world, nav }: { world: World; nav: Nav | null }) {
       const rect = canvas.getBoundingClientRect();
       if (!rect.width || !rect.height) return;
       event.preventDefault();
+      if (previousScale === null || event.type === "gesturestart") {
+        clearTimeout(timer);
+        flushPending?.();
+        lastWheelBurst = undefined;
+        anchorCache.reset();
+      }
       if (event.type === "gesturechange" && previousScale !== null)
         dolly(previousScale / event.scale, event.clientX, event.clientY, rect);
       previousScale = event.scale;
@@ -130,12 +173,13 @@ export function Director({ world, nav }: { world: World; nav: Nav | null }) {
       for (const type of gestureEvents) canvas.addEventListener(type, gesture, { passive: false });
     }
     canvas.addEventListener("wheel", wheel, { passive: false });
-    camera.addEventListener("control", hold);
+    camera.addEventListener("control", nativeControl);
     return () => {
+      clearTimeout(timer);
       for (const type of touchEvents) canvas.removeEventListener(type, touches);
       for (const type of gestureEvents) canvas.removeEventListener(type, gesture);
       canvas.removeEventListener("wheel", wheel);
-      camera.removeEventListener("control", hold);
+      camera.removeEventListener("control", nativeControl);
     };
   }, [canvas, nav, scene, world]);
   // A new layout or window size: frame again straight away.
@@ -146,11 +190,11 @@ export function Director({ world, nav }: { world: World; nav: Nav | null }) {
     if (!camera) return; // an empty town still has a camera, crowd or not
     camera.getTarget(lookAt.target); lookAt.active = true;
     const me = followedPlayer(state, nav);
-    camera.dollyToCursor = !me; // Native two-finger touch uses its pinch midpoint.
     m.walkingSince = me ? m.walkingSince || now : 0;
     if (state.manualAt !== m.pickedAt || state.selected !== m.selected) {
       Object.assign(m, { pickedAt: state.manualAt, selected: state.selected, holdUntil: 0, manualUntil: 0, followPausedUntil: 0, nextAim: 0 });
     }
+    camera.dollyToCursor = !me || now < m.followPausedUntil; // Native touch uses its pinch midpoint during inspection.
     camera.smoothTime = !me ? (now < m.manualUntil ? .12 : .55) : ballCam.live ? .55 : now - m.walkingSince < FLY_DOWN ? 1.2 : .18; // then keep up with a sprint
     if (me) {
       if (now >= m.followPausedUntil) follow(camera, m, me);
