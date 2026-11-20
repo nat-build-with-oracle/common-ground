@@ -96,3 +96,13 @@ test('a missing or offline dossier cannot redirect its default terminal to the p
   assert.equal(restoreSession(sessionPath(bots[1].id), search, bots.map(bot => bot.id === bots[1].id ? { ...bot, status: 'offline' } : bot)).terminalFull, null);
   assert.equal(restoreSession('/s/missing', `${search}&terminal=as`, bots).terminalFull, id);
 });
+
+test('offline walking identity cannot own a terminal, even alongside a live dossier', () => {
+  const roster = bots.map(bot => bot.id === id ? { ...bot, status: 'offline' } : bot);
+  const search = `?walk=1&as=${encodeURIComponent(id)}&t=1&terminal=as`;
+  for (const path of ['/', sessionPath(bots[1].id)]) {
+    const restored = restoreSession(path, search, roster);
+    assert.equal(restored.walkingAs, null);
+    assert.equal(restored.terminalFull, null);
+  }
+});

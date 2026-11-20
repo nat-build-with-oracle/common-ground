@@ -50,7 +50,7 @@ export function restoreSession(pathname: string, search: string, bots: readonly 
   const params = new URLSearchParams(search);
   const walking = params.get("walk") === "1";
   const requestedResident = walking ? params.get("as") : null;
-  const walkingAs = requestedResident && bots.some(bot => bot.id === requestedResident) ? requestedResident : null;
+  const walkingAs = requestedResident && resolveSession(requestedResident, bots).kind === "live" ? requestedResident : null;
   const terminalFull = params.get("t") === "1"
     ? params.get("terminal") === "as" ? walkingAs : route.kind === "none" ? walkingAs : selected
     : null;

@@ -4,8 +4,9 @@ import { isThemeId } from "@/lib/themes";
 import { setOffice, setPreview, setTheme, useOffice } from "../store";
 import { endFootball, matchActive, startFootball } from "../game/football/football.store";
 import { toggleMusic } from "../music/music";
-import { openBook, toggleWalk, visitZone, walkAs } from "../hud/hud.shared";
+import { openBook, stopWalking, visitZone, walkAs, walkAsYourself } from "../hud/hud.shared";
 import type { PaletteAction } from "./palette.items";
+import { openTerminal } from "../term/term.actions";
 
 export function runAction(action: PaletteAction) {
   const state = useOffice.getState();
@@ -13,11 +14,12 @@ export function runAction(action: PaletteAction) {
   switch (action.kind) {
     case "follow": setOffice({ selected: action.id, manual: null, hudPanel: null, walking: false, walkingAs: null }); break;
     case "walkAs": walkAs(action.id); break;
-    case "terminal": setOffice({ selected: action.id, terminalFull: action.id }); break;
+    case "terminal": openTerminal(action.id); break;
     case "visit": visitZone(action.zone); break;
     case "overview": visitZone(); break;
     case "panel": openBook(action.panel); break;
-    case "walk": toggleWalk(); break;
+    case "walkYourself": walkAsYourself(); break;
+    case "stopWalking": stopWalking(); break;
     case "football": if (matchActive()) endFootball(); else if (state.bots.length) startFootball(); break;
     case "music": toggleMusic(); break;
     case "theme": if (isThemeId(action.theme)) setTheme(action.theme); break;

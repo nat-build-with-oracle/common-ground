@@ -38,6 +38,8 @@ const { default: Hud } = await import('../components/Hud.tsx');
 const { default: TownMap } = await import('../components/TownMap.tsx');
 const { loadTheme, residentFigureVisible, setScrollWheelMode, useOffice } = await import('../components/store.ts');
 const { stopWalking, toggleWalk, visitZone, walkAs } = await import('../components/hud/hud.shared.tsx');
+const { runAction } = await import('../components/palette/palette.run.ts');
+const { paletteItems } = await import('../components/palette/palette.items.ts');
 const { handleHudKey } = await import('../components/hud/hud.keys.ts');
 const { useFootball } = await import('../components/game/football/football.store.ts');
 const { buildWorld } = await import('../components/world.ts');
@@ -46,7 +48,8 @@ const initialFootball = useFootball.getState();
 const render = (state = {}) => { useOffice.setState({ ...initial, ...state }, true); return renderToStaticMarkup(React.createElement(Hud)); };
 
 test('walk controls enter, switch, and exit oracle bodies without retaining stale identity', () => {
-  useOffice.setState({ ...initial, selected: 'oracle-a' }, true);
+  const bots = ['oracle-a', 'oracle-b'].map(id => ({ id, name: id, status: 'idle', href: '' }));
+  useOffice.setState({ ...initial, bots, selected: 'oracle-a' }, true);
   toggleWalk(); // H on a selected resident
   assert.equal(useOffice.getState().walking, true);
   assert.equal(useOffice.getState().walkingAs, 'oracle-a');
@@ -72,6 +75,24 @@ test('walk controls enter, switch, and exit oracle bodies without retaining stal
 
   walkAs('oracle-a'); // resident card or palette action
   visitZone(); // every walk exit clears the possessed identity
+  assert.equal(useOffice.getState().walking, false);
+  assert.equal(useOffice.getState().walkingAs, null);
+});
+
+test('palette walking actions are explicit and ignore the selected dossier', () => {
+  const bot = { id: 'oracle-a', name: 'oracle-a', status: 'idle', href: '' };
+  useOffice.setState({ ...initial, bots: [bot], selected: bot.id }, true);
+  const start = paletteItems({ bots: [bot], zones: [], preview: false, walking: false, music: false }).find(item => item.key === 'walk');
+  assert.equal(start.action.kind, 'walkYourself');
+  runAction(start.action);
+  assert.equal(useOffice.getState().walking, true);
+  assert.equal(useOffice.getState().walkingAs, null);
+
+  const other = { ...bot, id: 'oracle-b', name: 'oracle-b' };
+  useOffice.setState({ bots: [bot, other], selected: other.id, walkingAs: bot.id });
+  const stop = paletteItems({ bots: [bot, other], zones: [], preview: false, walking: true, music: false }).find(item => item.key === 'walk');
+  assert.equal(stop.action.kind, 'stopWalking');
+  runAction(stop.action);
   assert.equal(useOffice.getState().walking, false);
   assert.equal(useOffice.getState().walkingAs, null);
 });
@@ -148,8 +169,25 @@ test('resident surfaces offer walk-as and the possessed HUD keeps live status vi
   assert.equal((selected.match(/<kbd>Esc<\/kbd> return to overview/g) ?? []).length, 1);
   assert.doesNotMatch(selected, /<kbd>H<\/kbd> stop/);
 
+  const walkingAsYourself = render({ bots: [bot], walking: true, walkingAs: null, selected: bot.id });
+  assert.match(walkingAsYourself, /<kbd>H<\/kbd> walk as beta-oracle/);
+
+  const currentDossier = render({ bots: [bot], walking: true, walkingAs: bot.id, selected: bot.id });
+  assert.match(currentDossier, /Return to overview <kbd>H<\/kbd>/);
+  assert.doesNotMatch(currentDossier, /> Walk as beta-oracle <kbd>H<\/kbd>/);
+
   const preview = render({ bots: [bot], walking: true, walkingAs: bot.id, preview: true });
   assert.doesNotMatch(preview, /<kbd>Enter<\/kbd> terminal/);
+});
+
+test('offline residents cannot be walked as', () => {
+  const offline = { id: 'offline', name: 'offline-oracle', color: '#aaa', title: 'Codex', sectionId: null, status: 'offline', working: false, seenAt: Date.now(), source: 'herdr', host: 'm5', runtime: 'codex', pane: '%12', project: 'common-ground', href: '' };
+  useOffice.setState({ ...initial, bots: [offline], selected: offline.id }, true);
+  walkAs(offline.id);
+  assert.equal(useOffice.getState().walkingAs, null);
+  const residents = render({ bots: [offline], hudPanel: 'residents' });
+  assert.match(residents, /class="resident-walk" disabled="" aria-label="Walk as offline-oracle"/);
+  assert.equal(paletteItems({ bots: [offline], zones: [], preview: false, walking: false, music: false }).find(item => item.action.kind === 'walkAs').disabled, true);
 });
 test('football disables walk-as entry points and explains why', () => {
   const bot = { id: 'beta', name: 'beta-oracle', color: '#f09b82', title: 'Codex', sectionId: null, status: 'idle', working: false, seenAt: Date.now(), source: 'herdr', host: 'm5', runtime: 'codex', pane: '%12', project: 'common-ground', href: '' };
@@ -198,7 +236,7 @@ test('travel deck lists the eleven places of the nation (keys 1–0 reach the fi
 test('session links survive a failed roster request, a fresh tab and terminal history traversal', async () => {
   const { followSessionUrl } = await import('../components/SessionUrl.tsx');
   const originalWindow = Object.getOwnPropertyDescriptor(globalThis, 'window');
-  const initialUrl = 'https://town.test/s/B?walk=1&as=A';
+  const initialUrl = 'https://town.test/s/herdr%3AB?host=http%3A%2F%2F127.0.0.1%3A3457&walk=1&as=herdr%3AA';
   let location = new URL(initialUrl);
   const history = [location.href];
   let index = 0;
@@ -217,7 +255,11 @@ test('session links survive a failed roster request, a fresh tab and terminal hi
   });
   Object.defineProperty(browser, 'location', { get: () => location });
   Object.defineProperty(globalThis, 'window', { configurable: true, value: browser });
-  const roster = { updatedAt: 1, loading: false, bots: [{ id: 'A', status: 'idle' }, { id: 'B', status: 'idle' }] };
+  const roster = {
+    updatedAt: 3, loading: false, preview: false,
+    sources: [{ id: 'herdr', status: 'connected' }],
+    bots: [{ id: 'herdr:A', status: 'idle' }, { id: 'herdr:B', status: 'idle' }],
+  };
   const identities = () => {
     const { selected, walkingAs, terminalFull } = useOffice.getState();
     return [selected, walkingAs, terminalFull];
@@ -226,26 +268,88 @@ test('session links survive a failed roster request, a fresh tab and terminal hi
   try {
     useOffice.setState(initial, true);
     stop = followSessionUrl();
-    useOffice.setState({ loading: false, error: 'Temporary network failure' });
+    // A tokenless hosted tab may show the synthetic town, but it must retain the live route.
+    useOffice.setState({ preview: true, updatedAt: 1, loading: false, bots: [{ id: 'herdr:A', status: 'idle' }, { id: 'herdr:B', status: 'idle' }] });
     assert.equal(location.href, initialUrl);
+    assert.deepEqual(identities(), [null, null, null]);
+    // A timestamped response whose requested source failed is still not a roster for that source.
+    useOffice.setState({ preview: false, updatedAt: 2, sources: [{ id: 'herdr', status: 'error' }], error: 'Temporary network failure' });
+    assert.equal(location.href, initialUrl);
+    assert.deepEqual(identities(), [null, null, null]);
     useOffice.setState({ ...roster, error: '' });
-    assert.deepEqual(identities(), ['B', 'A', null]);
+    assert.deepEqual(identities(), ['herdr:B', 'herdr:A', null]);
     handleHudKey({ key: 'e', target: null, preventDefault() {} });
     assert.equal(location.searchParams.get('t'), '1');
     assert.equal(index, 1);
     stop();
     useOffice.setState({ ...initial, ...roster }, true);
     stop = followSessionUrl();
-    assert.deepEqual(identities(), ['B', 'A', 'A']);
+    assert.deepEqual(identities(), ['herdr:B', 'herdr:A', 'herdr:A']);
     location = new URL(history[--index]);
     browser.dispatchEvent(new Event('popstate'));
-    assert.deepEqual(identities(), ['B', 'A', null]);
+    assert.deepEqual(identities(), ['herdr:B', 'herdr:A', null]);
     location = new URL(history[++index]);
     browser.dispatchEvent(new Event('popstate'));
-    assert.deepEqual(identities(), ['B', 'A', 'A']);
+    assert.deepEqual(identities(), ['herdr:B', 'herdr:A', 'herdr:A']);
+    assert.equal(useOffice.getState().terminalInput, null);
+    // Returning to the same pane from history must also revoke an existing typing grant.
+    useOffice.setState({ terminalInput: 'herdr:A' });
+    browser.dispatchEvent(new Event('popstate'));
+    assert.equal(useOffice.getState().terminalInput, null);
     assert.equal(history.length, 2);
+
+    // History can enter a route whose provider is currently failed. Revoke input at once,
+    // retain that route, and wait for a connected roster before resolving it.
+    useOffice.setState({ terminalInput: 'herdr:A', sources: [...roster.sources, { id: 'maw', status: 'error' }] });
+    location = new URL('https://town.test/s/maw%3AA?walk=1&as=maw%3AA&t=1');
+    browser.dispatchEvent(new Event('popstate'));
+    assert.equal(useOffice.getState().terminalInput, null);
+    assert.equal(useOffice.getState().terminalFull, null);
+    assert.equal(location.pathname, '/s/maw%3AA');
   } finally {
     stop?.();
+    useOffice.setState(initial, true);
+    if (originalWindow) Object.defineProperty(globalThis, 'window', originalWindow);
+    else delete globalThis.window;
+  }
+});
+
+test('the delayed visitor walk is cancelled by selection or navigation', async () => {
+  const { requestedSessionIds, startWalking } = await import('../components/SessionUrl.tsx');
+  const originalWindow = Object.getOwnPropertyDescriptor(globalThis, 'window');
+  let location = new URL('https://town.test/');
+  const browser = new EventTarget();
+  Object.assign(browser, { setTimeout, clearTimeout });
+  Object.defineProperty(browser, 'location', { get: () => location });
+  Object.defineProperty(globalThis, 'window', { configurable: true, value: browser });
+  try {
+    assert.deepEqual(requestedSessionIds('/s/herdr%3AB', '?host=http://127.0.0.1:3457&walk=1&as=herdr%3AA'), ['herdr:B', 'herdr:A']);
+    useOffice.setState(initial, true);
+    startWalking(5);
+    useOffice.setState({ selected: 'B' });
+    await new Promise(resolve => setTimeout(resolve, 15));
+    assert.equal(useOffice.getState().walking, false);
+
+    useOffice.setState({ ...initial }, true);
+    startWalking(5);
+    location = new URL('https://town.test/s/B');
+    browser.dispatchEvent(new Event('popstate'));
+    await new Promise(resolve => setTimeout(resolve, 15));
+    assert.equal(useOffice.getState().walking, false);
+
+    useOffice.setState({ ...initial }, true);
+    location = new URL('https://town.test/');
+    startWalking(5);
+    useOffice.setState({ hudPanel: 'residents' });
+    await new Promise(resolve => setTimeout(resolve, 15));
+    assert.equal(useOffice.getState().walking, false);
+
+    useOffice.setState({ ...initial }, true);
+    startWalking(5);
+    useOffice.setState({ atlasOpen: true });
+    await new Promise(resolve => setTimeout(resolve, 15));
+    assert.equal(useOffice.getState().walking, false);
+  } finally {
     useOffice.setState(initial, true);
     if (originalWindow) Object.defineProperty(globalThis, 'window', originalWindow);
     else delete globalThis.window;
@@ -270,5 +374,72 @@ test('roster removal releases possession and its open terminal in the same updat
   } finally {
     unsubscribe();
     useOffice.setState(initial, true);
+  }
+});
+
+const { closeTerminal, enableTerminalInput, openTerminal } = await import('../components/term/term.actions.ts');
+const live = { id: 'live', name: 'Live Oracle', status: 'idle' };
+const offline = { id: 'offline', name: 'Offline Oracle', status: 'offline' };
+const press = key => handleHudKey({ key, target: null, preventDefault() {} });
+
+test('terminal views remain read-only until the resident is explicitly authorized', () => {
+  useOffice.setState({ ...initial, bots: [live, offline], terminalFull: null, terminalInput: null }, true);
+  assert.equal(openTerminal(live.id), true);
+  assert.equal(useOffice.getState().terminalFull, live.id);
+  assert.equal(useOffice.getState().terminalInput, null);
+
+  assert.equal(enableTerminalInput(live.id), true);
+  assert.equal(useOffice.getState().terminalInput, live.id);
+  closeTerminal();
+  assert.equal(useOffice.getState().terminalFull, null);
+  assert.equal(useOffice.getState().terminalInput, null);
+});
+
+test('only E and Enter on the visible dossier authorize keyboard input', () => {
+  useOffice.setState({ ...initial, bots: [live], walking: true, walkingAs: live.id, selected: null }, true);
+  press('Enter');
+  assert.equal(useOffice.getState().terminalFull, live.id);
+  assert.equal(useOffice.getState().terminalInput, null, 'fallback Enter has no visible dossier');
+
+  closeTerminal();
+  useOffice.setState({ selected: live.id, hudPanel: 'residents' });
+  press('Enter');
+  assert.equal(useOffice.getState().terminalInput, null, 'a covered dossier is not visible');
+
+  closeTerminal();
+  useOffice.setState({ hudPanel: null });
+  press('Enter');
+  assert.equal(useOffice.getState().terminalInput, live.id);
+
+  closeTerminal();
+  useOffice.setState({ selected: null });
+  press('e');
+  assert.equal(useOffice.getState().terminalInput, live.id);
+});
+
+test('offline residents cannot be opened or authorized for terminal input', () => {
+  useOffice.setState({ ...initial, bots: [live, offline], terminalFull: null, terminalInput: null }, true);
+  assert.equal(openTerminal(offline.id), false);
+  assert.equal(useOffice.getState().terminalFull, null);
+
+  useOffice.setState({ terminalFull: offline.id });
+  assert.equal(enableTerminalInput(offline.id), false);
+  assert.equal(useOffice.getState().terminalInput, null);
+});
+
+test('a failed source or disconnected fleet revokes input before the next keystroke', async t => {
+  const { refreshFleet } = await import('../components/store.ts');
+  const resident = { ...live, source: 'herdr' };
+  const fetch = t.mock.method(globalThis, 'fetch');
+  for (const response of [
+    async () => Response.json({ readOnly: true, updatedAt: 1, bots: [], sections: [], sources: [{ id: 'herdr', status: 'error' }] }),
+    async () => { throw new Error('Disconnected'); },
+  ]) {
+    useOffice.setState({ ...initial, bots: [resident], walking: true, walkingAs: live.id, terminalFull: live.id, terminalInput: live.id }, true);
+    fetch.mock.mockImplementation(response);
+    await refreshFleet();
+    const state = useOffice.getState();
+    assert.equal(state.bots[0].status, 'offline');
+    assert.deepEqual([state.walkingAs, state.terminalFull, state.terminalInput], [null, null, null]);
   }
 });

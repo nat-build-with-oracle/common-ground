@@ -30,8 +30,14 @@ export function visitZone(id?: string) {
   setOffice({ hudPanel: null, selected: null, manual: id ? { kind: "zone", id } : { kind: "overview" }, manualAt: Date.now(), ...(walking && id ? { travel: id } : {}) });
 }
 export function walkAs(id: string) {
-  if (matchActive()) return;
+  const resident = useOffice.getState().bots.find(bot => bot.id === id);
+  if (matchActive() || !resident || resident.status === "offline") return;
   setOffice({ walking: true, walkingAs: id, selected: null, hudPanel: null, atlasOpen: false, manual: null, manualAt: Date.now() });
+  sfx("pop");
+}
+export function walkAsYourself() {
+  if (matchActive()) return;
+  setOffice({ walking: true, walkingAs: null, selected: null, hudPanel: null, atlasOpen: false, manual: null, manualAt: Date.now() });
   sfx("pop");
 }
 export function stopWalking() {
@@ -42,8 +48,7 @@ export function toggleWalk() {
   const state = useOffice.getState();
   if (state.selected && (!state.walking || state.walkingAs !== state.selected)) return walkAs(state.selected);
   if (state.walking) return stopWalking();
-  setOffice({ walking: true, walkingAs: null, selected: null, hudPanel: null, atlasOpen: false, manual: null, manualAt: Date.now() });
-  sfx("pop");
+  walkAsYourself();
 }
 
 export function Book({ title, index, children }: { title: string; index: string; children: ReactNode }) {

@@ -12,7 +12,7 @@ export function Overlays() {
   const selectedBot = useOffice(s => s.bots.find(bot => bot.id === s.selected));
   const match = useFootball(s => s.match.phase !== "idle");
   const caption = useOffice(s => s.caption), captionBot = caption ? botById(caption.botId) : null, notice = useOffice(s => s.sessionNotice);
-  const switchingBot = walkingBot && selectedBot?.id !== walkingBot.id ? selectedBot : undefined;
+  const switchingBot = selectedBot?.id !== walkingBot?.id ? selectedBot : undefined;
   return <>
     {error && <div role="alert" className="office-error">{error}</div>}
     {notice && <div role="status" className="office-error session-notice">{notice.reason === "offline" ? "This session is offline right now." : "Session not found — it is not in the connected town."} <button className="text-button" onClick={() => { setOffice({ sessionNotice: null }); window.history.pushState(null, "", "/" + window.location.search); }}>Back to the town</button></div>}

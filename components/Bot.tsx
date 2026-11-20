@@ -11,6 +11,7 @@ import type { TerminalSnapshot } from "@/lib/terminal-types";
 import type { Rt } from "./crowd";
 import { setOffice, useOffice } from "./store";
 import Citizen from "./Citizen";
+import { openTerminal } from "./term/term.actions";
 
 /** What a citizen is doing, in words: observed status first, then the simulated daily life. */
 function doing(bot: OracleBot, rt?: Rt) {
@@ -32,7 +33,7 @@ const COMPLAINT_MS = 2500; // how long "ouch" stays up after a ball hits them
 function TerminalPeek({ bot, terminal, close }: { bot: OracleBot; terminal: TerminalSnapshot; close: boolean }) {
   const live = terminal.status === "live";
   const screen = live ? (close ? terminal.content : terminal.content.split("\n").slice(-2).join("\n")) || "(terminal is blank)" : terminal.error;
-  const open = (event: { stopPropagation(): void }) => { event.stopPropagation(); setOffice({ selected: bot.id, terminalFull: bot.id }); };
+  const open = (event: { stopPropagation(): void }) => { event.stopPropagation(); openTerminal(bot.id); };
   return (
     <div className={`terminal-cloud ${terminal.status} ${close ? "" : "compact"}`} style={{ pointerEvents: "auto", cursor: "zoom-in" }} title="Open full screen" onClick={open}>
       <header><span>⌘ {bot.name}</span><small>{live ? "⤢ FULL SCREEN" : "UNAVAILABLE"}</small></header>

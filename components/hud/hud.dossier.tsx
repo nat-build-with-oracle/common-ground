@@ -4,13 +4,15 @@ import { STATUS_LABEL } from "@/lib/hud";
 import { lifeDestination } from "@/lib/life";
 import { setOffice, useOffice } from "../store";
 import { Icon } from "../Icons";
-import { ago, Book, safeHref, StatusDot, walkAs } from "./hud.shared";
+import { ago, Book, safeHref, StatusDot, stopWalking, walkAs } from "./hud.shared";
 import { useFootball } from "../game/football/football.store";
+import { openTerminal } from "../term/term.actions";
 
 const PLACE = { desk: "At their work desk", waiting: "Petition office", home: "At home / resting", community: "Ministry of Community", drinks: "Café or brewery", garden: "In the garden", parliament: "Sitting in Parliament" } as const;
 
 export function CitizenDossier() {
   const selected = useOffice(s => s.selected), bot = useOffice(s => s.bots.find(candidate => candidate.id === selected));
+  const walkingAs = useOffice(s => s.walkingAs);
   const preview = useOffice(s => s.preview), enabled = useOffice(s => s.terminalEnabled), terminal = useOffice(s => selected ? s.terminals[selected] : undefined);
   const routines = useOffice(s => s.routinesEnabled);
   const football = useFootball(s => s.match.phase !== "idle");
@@ -22,9 +24,11 @@ export function CitizenDossier() {
     <div className="citizen-identity"><span className="resident-monogram" style={{ "--resident-color": bot.color } as CSSProperties}>{bot.name.slice(0, 1).toUpperCase()}</span><div><h3>{bot.name}</h3><p><StatusDot status={bot.status} />{STATUS_LABEL[bot.status]}<span> · {preview ? "synthetic" : `seen ${ago(bot.seenAt)}`}</span></p></div></div>
     <dl className="citizen-facts">{fields.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
     <div className="life-postcard"><span className="atlas-kicker">EVERYDAY LIFE / SIMULATED</span><h3>{place}</h3><p>{bot.project || "Unassigned"} household</p><small>Project-based family. Routines and sleep are visual fiction, not reported activity.</small></div>
-    <button className="ink-button walk-as-button" onClick={() => walkAs(bot.id)} disabled={football} title={football ? "Unavailable during a football match" : `Walk as ${bot.name}`}><Icon name="walk" /> {football ? "Walk as unavailable during a match" : `Walk as ${bot.name}`} <kbd>H</kbd></button>
-    <div className="dossier-terminal"><h3 className="section-label">Terminal / read only</h3>{preview ? <p>No captures in synthetic preview.</p> : !enabled ? <button className="text-button" onClick={() => setOffice({ terminalEnabled: true })}>Show this citizen’s terminal snapshots →</button> : terminal?.status === "live" ? <><span className="capture-stamp">Captured {ago(terminal.capturedAt)}</span><pre className="open-full" title="Open full screen" onClick={() => setOffice({ selected: bot.id, terminalFull: bot.id })}>{terminal.content}</pre></> : <p>{terminal?.error || "Waiting for a local capture…"}</p>}</div>
-    {!preview && <button className="ink-button" onClick={() => setOffice({ selected: bot.id, terminalFull: bot.id })}><Icon name="terminal" /> Open full terminal <kbd>Enter</kbd></button>}
+    {walkingAs === bot.id
+      ? <button className="ink-button walk-as-button" onClick={stopWalking}><Icon name="walk" /> Return to overview <kbd>H</kbd></button>
+      : <button className="ink-button walk-as-button" onClick={() => walkAs(bot.id)} disabled={football || bot.status === "offline"} title={football ? "Unavailable during a football match" : bot.status === "offline" ? "Unavailable while this resident is offline" : `Walk as ${bot.name}`}><Icon name="walk" /> {football ? "Walk as unavailable during a match" : bot.status === "offline" ? "Walk as unavailable while offline" : `Walk as ${bot.name}`} <kbd>H</kbd></button>}
+    <div className="dossier-terminal"><h3 className="section-label">Terminal / read only</h3>{preview ? <p>No captures in synthetic preview.</p> : !enabled ? <button className="text-button" onClick={() => setOffice({ terminalEnabled: true })}>Show this citizen’s terminal snapshots →</button> : terminal?.status === "live" ? <><span className="capture-stamp">Captured {ago(terminal.capturedAt)}</span><pre className="open-full" title="Open full screen" onClick={() => openTerminal(bot.id)}>{terminal.content}</pre></> : <p>{terminal?.error || "Waiting for a local capture…"}</p>}</div>
+    {!preview && bot.status !== "offline" && <button className="ink-button" onClick={() => openTerminal(bot.id)}><Icon name="terminal" /> Open full terminal <kbd>Enter</kbd></button>}
     {href && <a className="text-button" href={href} target="_blank" rel="noreferrer noopener">Open source view <Icon name="external" /></a>}
   </Book>;
 }

@@ -6,6 +6,7 @@ import { setOffice, useOffice } from "../store";
 import { endFootball, matchActive, startFootball } from "../game/football/football.store";
 import { toggleMusic } from "../music/music";
 import { closeBook, openBook, stopWalking, toggleWalk } from "./hud.shared";
+import { openTerminal } from "../term/term.actions";
 
 export function handleHudKey(event: KeyboardEvent) {
   const state = useOffice.getState();
@@ -15,7 +16,8 @@ export function handleHudKey(event: KeyboardEvent) {
     const target = action === "open-terminal" ? state.selected ?? state.walkingAs : state.walkingAs;
     if (target && !state.preview && !(action === "interact" && matchActive())) {
       event.preventDefault();
-      setOffice({ terminalFull: target });
+      const visibleDossier = state.selected === target && !state.hudPanel && !state.atlasOpen;
+      openTerminal(target, { select: false, input: action === "interact" || visibleDossier });
     }
     return;
   }

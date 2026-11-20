@@ -5,7 +5,7 @@
 import { useEffect, useState } from "react";
 import { refreshFleet, setPreview, useOffice } from "../store";
 import { HOSTED, hostChoice, hostToken, setHostToken } from "./source";
-import { startWalking } from "../SessionUrl";
+import { requestedSessionIds, startWalking } from "../SessionUrl";
 
 const SITE = "https://town.buildwithoracle.com";
 const LOOPBACK = /^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/;
@@ -21,7 +21,10 @@ export default function SourceGate() {
     if (!HOSTED || preview) return;
     const ready = choice.kind === "host" && !!hostToken(choice.origin);
     // With a saved token, keep polling through transient roster failures. A refusal clears the token.
-    if (!ready) { setPreview(true); startWalking(); }
+    if (!ready) {
+      setPreview(true);
+      if (!requestedSessionIds(window.location.pathname, window.location.search).length) startWalking();
+    }
   }, [auth, preview, loading]); // eslint-disable-line react-hooks/exhaustive-deps
   // A refused token brings the card back open, with the reason in its header.
   useEffect(() => { if (auth === "rejected") setOpen(true); }, [auth]);

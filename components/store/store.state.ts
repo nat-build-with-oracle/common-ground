@@ -33,6 +33,7 @@ type Camera = {
 type Interface = {
   hudPanel: HudPanel; residentFilter: ResidentFilter; atlasOpen: boolean; paletteOpen: boolean;
   /** Full-screen terminal for this citizen id (null = closed). */ terminalFull: string | null;
+  /** Resident whose open terminal the visitor explicitly authorized for keyboard input. */ terminalInput: string | null;
   theme: ThemeId; sound: boolean; voice: boolean; music: boolean; scrollWheelMode: ScrollWheelMode;
   caption: { botId: string; text: string } | null;
 };
@@ -50,7 +51,7 @@ const initialState = (): State => ({
   bots: [], groups: [], sections: [], sources: [], nodes: [], updatedAt: 0, loading: true, preview: false, error: "", connected: false,
   hostAuth: "missing", live: {}, feed: [], terminals: {}, terminalEnabled: true, routinesEnabled: false,
   selected: null, hovered: null, focus: null, manual: { kind: "overview" }, manualAt: Date.now(), auto: false, sessionNotice: null,
-  hudPanel: null, residentFilter: "all", atlasOpen: false, paletteOpen: false, terminalFull: null,
+  hudPanel: null, residentFilter: "all", atlasOpen: false, paletteOpen: false, terminalFull: null, terminalInput: null,
   theme: DEFAULT_THEME, sound: false, voice: false, music: false, scrollWheelMode: "auto", caption: null,
   walking: false, walkingAs: null, walkHint: "", travel: null, walkTo: null, throwMode: false, balls: [], hits: {},
 });

@@ -1,8 +1,40 @@
 "use client";
 import { useEffect } from "react";
-import { restoreSession, sessionPath, withWalking, withTerminal } from "@/lib/session-url";
+import { parseSessionPath, restoreSession, sessionPath, withWalking, withTerminal } from "@/lib/session-url";
 import { matchActive } from "./game/football/football.store";
 import { setOffice, useOffice } from "./store";
+
+let delayedWalk: { timer: number; unsubscribe: () => void; onPop: () => void } | null = null;
+
+function cancelDelayedWalk() {
+  if (!delayedWalk) return;
+  window.clearTimeout(delayedWalk.timer);
+  delayedWalk.unsubscribe();
+  window.removeEventListener("popstate", delayedWalk.onPop);
+  delayedWalk = null;
+}
+
+export function requestedSessionIds(pathname: string, search: string) {
+  const route = parseSessionPath(pathname), params = new URLSearchParams(search);
+  return [route.kind === "id" ? route.id : null, params.get("walk") === "1" ? params.get("as") : null]
+    .filter((id): id is string => !!id);
+}
+
+/** A failed source cannot confirm that a requested resident is missing. */
+function requestedSourcesReady(state: ReturnType<typeof useOffice.getState>) {
+  const { pathname, search } = window.location;
+  const requestedIds = requestedSessionIds(pathname, search);
+  if (state.preview) {
+    if (new URLSearchParams(search).has("host") && requestedIds.length) return false;
+    return requestedIds.every(id => state.bots.some(bot => bot.id === id && bot.status !== "offline"));
+  }
+  return requestedIds.every(id => {
+    const source = id.split(":", 1)[0];
+    const report = state.sources.find(candidate => candidate.id === source);
+    // A completed roster which does not configure this provider can safely resolve the id as missing.
+    return !report || report.status === "connected";
+  });
+}
 
 // Keeps the address bar, selected citizen, walking identity and terminal in step.
 // Read-only: URL ids are accepted only when they already exist in the connected roster.
@@ -14,6 +46,7 @@ function show(delayHuman = false) {
   setOffice({
     selected: restored.selected, sessionNotice: restored.notice,
     terminalFull: state.preview || (restored.terminalFull === restored.walkingAs && !walkingAs) ? null : restored.terminalFull,
+    terminalInput: null,
     walking: football ? state.walking : restored.walking && (!!walkingAs || !delayHuman), walkingAs,
     manual: null, hudPanel: null, ...(restored.walking && !football ? { manualAt: Date.now() } : {}),
   });
@@ -22,12 +55,20 @@ function show(delayHuman = false) {
 
 /** Start walking the way a visitor arrives: a beat of the god view, then the camera flies down to you. */
 export function startWalking(delayMs = 3000, preserveSelection = false) {
-  const initialPick = useOffice.getState().manualAt;
-  window.setTimeout(() => {
-    const state = useOffice.getState();
-    if (state.walking || state.manualAt !== initialPick) return;
+  cancelDelayedWalk();
+  const initial = useOffice.getState(), initialHref = window.location.href;
+  const navigated = (state: typeof initial) => state.walking || state.selected !== initial.selected
+    || state.manualAt !== initial.manualAt || state.hudPanel !== initial.hudPanel || state.atlasOpen !== initial.atlasOpen
+    || state.paletteOpen !== initial.paletteOpen || state.terminalFull !== initial.terminalFull || window.location.href !== initialHref;
+  const onPop = cancelDelayedWalk;
+  const unsubscribe = useOffice.subscribe(state => { if (navigated(state)) cancelDelayedWalk(); });
+  const timer = window.setTimeout(() => {
+    cancelDelayedWalk();
+    if (navigated(useOffice.getState())) return;
     setOffice({ walking: true, walkingAs: null, ...(!preserveSelection ? { selected: null } : {}), hudPanel: null, atlasOpen: false, manual: null, manualAt: Date.now() });
   }, delayMs);
+  delayedWalk = { timer, unsubscribe, onPop };
+  window.addEventListener("popstate", onPop);
 }
 
 export function followSessionUrl() {
@@ -36,7 +77,7 @@ export function followSessionUrl() {
     const state = useOffice.getState();
     if (!ready) {
       // A failed request cannot prove that a URL resident is absent. Wait for a successful roster response.
-      if (!state.updatedAt) return;
+      if (!state.updatedAt || !requestedSourcesReady(state)) return;
       ready = true;
       return show(true);
     }
@@ -50,11 +91,17 @@ export function followSessionUrl() {
     if (window.location.pathname + withWalking(window.location.search, false, null) !== path + withWalking(search, false, null)) window.history.pushState(null, "", path + walk);
     else if (window.location.pathname + window.location.search !== path + walk) window.history.replaceState(null, "", path + walk);
   };
-  const onPop = () => { if (ready) show(); };
+  const onPop = () => {
+    cancelDelayedWalk();
+    const state = useOffice.getState();
+    if (state.updatedAt && requestedSourcesReady(state)) { ready = true; return show(); }
+    ready = false;
+    setOffice({ terminalFull: null, terminalInput: null });
+  };
   const unsubscribe = useOffice.subscribe(sync);
   window.addEventListener("popstate", onPop);
   sync();
-  return () => { unsubscribe(); window.removeEventListener("popstate", onPop); };
+  return () => { cancelDelayedWalk(); unsubscribe(); window.removeEventListener("popstate", onPop); };
 }
 
 export default function SessionUrl() {
