@@ -239,7 +239,7 @@ test('football disables walk-as entry points and explains why', () => {
 });
 test('scroll wheel setting renders all modes and persists the selected mode', () => {
   const markup = render({ hudPanel: 'settings', scrollWheelMode: 'auto' });
-  for (const label of ['Auto', 'Zoom (mouse)', 'Pan (trackpad)']) assert.ok(markup.includes(`>${label}<`));
+  for (const label of ['Auto', 'Zoom', 'Pan (trackpad)']) assert.ok(markup.includes(`>${label}<`));
   assert.match(markup, /aria-label="Scroll wheel behavior"/);
   assert.match(markup, /aria-checked="true"[^>]*>Auto</);
 
