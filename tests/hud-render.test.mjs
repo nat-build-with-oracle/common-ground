@@ -36,7 +36,7 @@ registerHooks({
 });
 const { default: Hud } = await import('../components/Hud.tsx');
 const { default: TownMap } = await import('../components/TownMap.tsx');
-const { useOffice } = await import('../components/store.ts');
+const { loadTheme, setScrollWheelMode, useOffice } = await import('../components/store.ts');
 const { buildWorld } = await import('../components/world.ts');
 const initial = useOffice.getState();
 const render = (state = {}) => { useOffice.setState({ ...initial, ...state }, true); return renderToStaticMarkup(React.createElement(Hud)); };
@@ -62,6 +62,25 @@ test('all field books render with named close controls and explicit empty/previe
   assert.match(preview, /SYNTHETIC PREVIEW/);
   assert.match(preview, /Unavailable in synthetic preview/);
   assert.match(preview, /This viewer never sends commands/);
+});
+test('scroll wheel setting renders all modes and persists the selected mode', () => {
+  const markup = render({ hudPanel: 'settings', scrollWheelMode: 'auto' });
+  for (const label of ['Auto', 'Zoom (mouse)', 'Pan (trackpad)']) assert.ok(markup.includes(`>${label}<`));
+  assert.match(markup, /aria-label="Scroll wheel behavior"/);
+  assert.match(markup, /aria-checked="true"[^>]*>Auto</);
+
+  const saved = new Map(), localStorageDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+  Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: { getItem: key => saved.get(key) ?? null, setItem: (key, value) => saved.set(key, value) } });
+  try {
+    setScrollWheelMode('zoom');
+    assert.equal(saved.get('common-ground-scroll-wheel-mode'), 'zoom');
+    useOffice.setState({ scrollWheelMode: 'auto' });
+    loadTheme();
+    assert.equal(useOffice.getState().scrollWheelMode, 'zoom');
+  } finally {
+    if (localStorageDescriptor) Object.defineProperty(globalThis, 'localStorage', localStorageDescriptor);
+    else delete globalThis.localStorage;
+  }
 });
 test('travel deck lists the eleven places of the nation (keys 1–0 reach the first ten) and the atlas opens accessibly', () => {
   useOffice.setState({ ...initial, atlasOpen: true }, true);

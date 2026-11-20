@@ -5,20 +5,24 @@
 import { CameraControls, CameraControlsImpl } from "@react-three/drei";
 import { useFrame, useThree } from "@react-three/fiber";
 import { useEffect, useRef } from "react";
-import { PerspectiveCamera, Plane, Raycaster, Spherical, Vector2, Vector3 } from "three";
+import { PerspectiveCamera, Raycaster, Spherical, Vector2, Vector3 } from "three";
 import { classifyWheelBurst, townFrame, wheelPixels, wheelZoomFactor } from "@/lib/camera";
 import type { Nav, Rt } from "../crowd";
 import { lookAt } from "../focus";
 import { ballCam } from "../game/football/football.store";
 import { setOffice, useOffice, type State } from "../store";
 import type { World } from "../world";
+import { townZoomAnchor } from "./office.camera-anchor";
 
 const HOLD_AFTER_ORBIT = 15_000; // ms the camera leaves you alone after you drag or scroll it
 const FLY_DOWN = 2_500;          // ms of slow arrival when a walk starts from the god view
 const MANUAL_SMOOTH_MS = 350;
 const TOUR_STOP = 10_000;        // ms on each working citizen while touring
 
-type Memory = { shot: string; holdUntil: number; manualUntil: number; nextAim: number; pickedAt: number; selected: string | null; walkingSince: number };
+// Wheel events have no device identifier. Keep Auto’s evidence for this page session.
+let lastWheelBurst: ReturnType<typeof classifyWheelBurst> | undefined;
+
+type Memory = { shot: string; holdUntil: number; manualUntil: number; followPausedUntil: number; nextAim: number; pickedAt: number; selected: string | null; walkingSince: number };
 /** Shots are keyed "bot:<id>", "zone:<id>", "overview", "player" or "match". */
 const citizenIn = (shot: string) => shot.startsWith("bot:") ? shot.slice(4) : null;
 
@@ -49,17 +53,16 @@ function follow(controls: CameraControls, memory: Memory, me: Rt) {
 export function Director({ world, nav }: { world: World; nav: Nav | null }) {
   const controls = useRef<CameraControls>(null);
   const canvas = useThree(three => three.gl.domElement);
+  const scene = useThree(three => three.scene);
   const size = useThree(three => three.size);
-  const memory = useRef<Memory>({ shot: "", holdUntil: 0, manualUntil: 0, nextAim: 0, pickedAt: 0, selected: null, walkingSince: 0 });
+  const memory = useRef<Memory>({ shot: "", holdUntil: 0, manualUntil: 0, followPausedUntil: 0, nextAim: 0, pickedAt: 0, selected: null, walkingSince: 0 });
   useEffect(() => {
     const camera = controls.current!;
     const end = new Spherical();
     const hold = () => { memory.current.holdUntil = performance.now() + HOLD_AFTER_ORBIT; };
     // Native ctrl-wheel changes lens zoom instead of distance, bypassing the town's dolly limits.
     camera.mouseButtons.wheel = CameraControlsImpl.ACTION.NONE;
-    let burst: ReturnType<typeof classifyWheelBurst> | undefined;
     const ray = new Raycaster(), pointer = new Vector2(), anchor = new Vector3(), target = new Vector3();
-    const ground = new Plane(new Vector3(0, 1, 0), 0);
     const acceptsInput = () => {
       const state = useOffice.getState();
       return camera.enabled && !state.paletteOpen && !state.terminalFull && camera.camera instanceof PerspectiveCamera;
@@ -75,8 +78,8 @@ export function Director({ world, nav }: { world: World; nav: Nav | null }) {
       if (!followedPlayer(useOffice.getState(), nav)) {
         pointer.set(2 * (x - rect.left) / rect.width - 1, 1 - 2 * (y - rect.top) / rect.height);
         ray.setFromCamera(pointer, camera.camera);
-        if (ray.ray.intersectPlane(ground, anchor)) {
-          // Scale the pending camera pose about the ground hit, including its target.
+        if (townZoomAnchor(ray, scene, world.w, world.d, anchor)) {
+          // Scale the pending camera pose about the nearest visible town surface, including its target.
           camera.getTarget(target, true).lerp(anchor, 1 - next / radius);
           void camera.moveTo(target.x, target.y, target.z, true);
         }
@@ -89,16 +92,18 @@ export function Director({ world, nav }: { world: World; nav: Nav | null }) {
       if (!acceptsInput()) return;
       const rect = canvas.getBoundingClientRect();
       if (!rect.width || !rect.height) return;
+      const burst = classifyWheelBurst(event, lastWheelBurst, useOffice.getState().scrollWheelMode);
+      lastWheelBurst = burst;
       if (event.ctrlKey && safariGestures) { event.preventDefault(); return; }
-      burst = classifyWheelBurst(event, burst);
       const dy = wheelPixels(event.deltaY, event.deltaMode, rect.height);
       if (burst.action === "pan") {
-        if (followedPlayer(useOffice.getState(), nav) || !(event.deltaX || dy)) return;
+        if (!(event.deltaX || dy)) return;
         event.preventDefault();
         const radius = camera.getSpherical(end, true).radius;
         const unit = 2 * radius * Math.tan((camera.camera as PerspectiveCamera).getEffectiveFOV() * Math.PI / 360) / rect.height;
         void camera.truck(wheelPixels(event.deltaX, event.deltaMode, rect.height) * unit, dy * unit, true);
         moved();
+        if (followedPlayer(useOffice.getState(), nav)) memory.current.followPausedUntil = memory.current.holdUntil;
       } else {
         event.preventDefault();
         dolly(wheelZoomFactor(dy, burst.action === "pinch"), event.clientX, event.clientY, rect);
@@ -132,7 +137,7 @@ export function Director({ world, nav }: { world: World; nav: Nav | null }) {
       canvas.removeEventListener("wheel", wheel);
       camera.removeEventListener("control", hold);
     };
-  }, [canvas, nav]);
+  }, [canvas, nav, scene, world]);
   // A new layout or window size: frame again straight away.
   useEffect(() => { Object.assign(memory.current, { nextAim: 0, holdUntil: 0 }); }, [world, size.width, size.height]);
 
@@ -143,10 +148,15 @@ export function Director({ world, nav }: { world: World; nav: Nav | null }) {
     const me = followedPlayer(state, nav);
     camera.dollyToCursor = !me; // Native two-finger touch uses its pinch midpoint.
     m.walkingSince = me ? m.walkingSince || now : 0;
+    if (state.manualAt !== m.pickedAt || state.selected !== m.selected) {
+      Object.assign(m, { pickedAt: state.manualAt, selected: state.selected, holdUntil: 0, manualUntil: 0, followPausedUntil: 0, nextAim: 0 });
+    }
     camera.smoothTime = !me ? (now < m.manualUntil ? .12 : .55) : ballCam.live ? .55 : now - m.walkingSince < FLY_DOWN ? 1.2 : .18; // then keep up with a sprint
-    if (me) return follow(camera, m, me);
+    if (me) {
+      if (now >= m.followPausedUntil) follow(camera, m, me);
+      return;
+    }
 
-    if (state.manualAt !== m.pickedAt || state.selected !== m.selected) Object.assign(m, { pickedAt: state.manualAt, selected: state.selected, holdUntil: 0, nextAim: 0 });
     if (now < m.holdUntil) return;
     const shot = pickShot(state, nav, m.shot), citizen = citizenIn(shot);
     if (shot !== m.shot) { m.shot = shot; m.nextAim = 0; setOffice({ focus: citizen }); }

@@ -15,21 +15,33 @@ export const WHEEL_ZOOM_SENSITIVITY = .0016;
 export const PINCH_ZOOM_SENSITIVITY = .01;
 
 export type WheelAction = "pan" | "pinch" | "wheel";
-export type WheelBurst = { action: WheelAction; timeStamp: number };
+export type ScrollWheelMode = "auto" | "zoom" | "pan";
+export type WheelBurst = {
+  action: WheelAction;
+  ctrlKey: boolean;
+  mode: ScrollWheelMode;
+  shiftKey: boolean;
+  timeStamp: number;
+  trackpadSeen: boolean;
+};
 type WheelSample = Pick<WheelEvent, "ctrlKey" | "deltaMode" | "deltaX" | "deltaY" | "shiftKey" | "timeStamp">;
 
-/** Choose one action at the start of a wheel burst and retain it through momentum. */
-export function classifyWheelBurst(event: WheelSample, previous?: WheelBurst): WheelBurst {
-  if (previous && event.timeStamp - previous.timeStamp <= WHEEL_BURST_GAP)
-    return { action: previous.action, timeStamp: event.timeStamp };
+/** Keep momentum consistent unless modifiers, settings, or new trackpad evidence change the action. */
+export function classifyWheelBurst(event: WheelSample, previous?: WheelBurst, mode: ScrollWheelMode = "auto"): WheelBurst {
+  const trackpadSample = event.deltaX !== 0 || !Number.isInteger(event.deltaY);
+  const trackpadSeen = Boolean(previous?.trackpadSeen || trackpadSample);
+  const sameBurst = previous && event.timeStamp - previous.timeStamp <= WHEEL_BURST_GAP
+    && event.ctrlKey === previous.ctrlKey && event.shiftKey === previous.shiftKey
+    && mode === previous.mode;
 
-  const pixelNotch = event.deltaX === 0 && Math.abs(event.deltaY) >= 50
-    && Math.abs(event.deltaY - Math.round(event.deltaY)) < .01;
   const action = event.ctrlKey ? "pinch"
     : event.shiftKey ? "pan"
-    : event.deltaMode !== 0 || pixelNotch ? "wheel"
+    : mode === "zoom" ? "wheel"
+    : mode === "pan" || trackpadSeen ? "pan"
+    : sameBurst ? previous.action
+    : event.deltaMode !== 0 || Math.abs(event.deltaY) >= 50 ? "wheel"
     : "pan";
-  return { action, timeStamp: event.timeStamp };
+  return { action, ctrlKey: event.ctrlKey, mode, shiftKey: event.shiftKey, timeStamp: event.timeStamp, trackpadSeen };
 }
 
 /** Normalize browser wheel units into pixels before applying camera scaling. */

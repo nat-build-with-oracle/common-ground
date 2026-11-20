@@ -1,5 +1,6 @@
 // The one shared state for the town: what the fleet looks like, who the camera is on, the HUD, and you at play.
 import { create } from "zustand";
+import type { ScrollWheelMode } from "@/lib/camera";
 import type { HudPanel, ResidentFilter } from "@/lib/hud";
 import type { Activity, GroupView } from "@/lib/hub";
 import type { FederationNode, FleetSource, OracleBot } from "@/lib/fleet-types";
@@ -32,7 +33,7 @@ type Camera = {
 type Interface = {
   hudPanel: HudPanel; residentFilter: ResidentFilter; atlasOpen: boolean; paletteOpen: boolean;
   /** Full-screen terminal for this citizen id (null = closed). */ terminalFull: string | null;
-  theme: ThemeId; sound: boolean; voice: boolean; music: boolean;
+  theme: ThemeId; sound: boolean; voice: boolean; music: boolean; scrollWheelMode: ScrollWheelMode;
   caption: { botId: string; text: string } | null;
 };
 /** You, walking, and what you throw. */
@@ -50,7 +51,7 @@ const initialState = (): State => ({
   hostAuth: "missing", live: {}, feed: [], terminals: {}, terminalEnabled: true, routinesEnabled: false,
   selected: null, hovered: null, focus: null, manual: { kind: "overview" }, manualAt: Date.now(), auto: false, sessionNotice: null,
   hudPanel: null, residentFilter: "all", atlasOpen: false, paletteOpen: false, terminalFull: null,
-  theme: DEFAULT_THEME, sound: false, voice: false, music: false, caption: null,
+  theme: DEFAULT_THEME, sound: false, voice: false, music: false, scrollWheelMode: "auto", caption: null,
   walking: false, walkHint: "", travel: null, walkTo: null, throwMode: false, balls: [], hits: {},
 });
 
