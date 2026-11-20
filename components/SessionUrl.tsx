@@ -43,7 +43,7 @@ function show(delayHuman = false) {
   setOffice({
     selected: restored.selected, sessionNotice: restored.notice, pendingWalkId: null,
     terminalFull: state.preview || (restored.terminalFull === restored.walkingAs && !walkingAs) ? null : restored.terminalFull,
-    terminalInput: null,
+    terminalInput: null, pickedResidentIds: new Set(),
     walking: football ? state.walking : restored.walking && (!!walkingAs || !delayHuman), walkingAs,
     manual: null, hudPanel: null, ...(restored.walking && !football ? { manualAt: Date.now() } : {}),
   });
@@ -70,10 +70,11 @@ export function startWalking(delayMs = 3000, preserveSelection = false) {
 
 export function followSessionUrl() {
   let ready = false;
+  setOffice({ pickedResidentIds: new Set(), terminalInput: null });
   let picks = useOffice.getState().pickedResidentIds;
   const sync = () => {
     const state = useOffice.getState();
-    const picked = picks !== state.pickedResidentIds;
+    const picked = picks !== state.pickedResidentIds && state.pickedResidentIds.size > 0;
     picks = state.pickedResidentIds;
     if (picked) ready = true;
     if (!ready) {
@@ -102,7 +103,7 @@ export function followSessionUrl() {
     const state = useOffice.getState();
     if (state.updatedAt && requestedSourcesReady(state)) { ready = true; return show(); }
     ready = false;
-    setOffice({ terminalFull: null, terminalInput: null });
+    setOffice({ terminalFull: null, terminalInput: null, pickedResidentIds: new Set() });
   };
   const unsubscribe = useOffice.subscribe(sync);
   window.addEventListener("popstate", onPop);

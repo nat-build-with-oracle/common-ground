@@ -265,7 +265,7 @@ test('travel deck lists the eleven places of the nation (keys 1–0 reach the fi
   assert.match(markup, /Simulated families/);
 });
 
-test('session links survive a failed roster request, a fresh tab and terminal history traversal', async () => {
+test('session links survive a failed roster request, a fresh tab and terminal history traversal', async t => {
   const { followSessionUrl } = await import('../components/SessionUrl.tsx');
   const originalWindow = Object.getOwnPropertyDescriptor(globalThis, 'window');
   const initialUrl = 'https://town.test/s/herdr%3AB?host=http%3A%2F%2F127.0.0.1%3A3457&walk=1&as=herdr%3AA';
@@ -347,6 +347,33 @@ test('session links survive a failed roster request, a fresh tab and terminal hi
     assert.equal(location.searchParams.get('as'), 'herdr:B');
     useOffice.setState({ sources: [...roster.sources, { id: 'maw', status: 'connected' }], bots: [...roster.bots, { id: 'maw:A', status: 'idle' }] });
     assert.deepEqual(identities(), [null, 'herdr:B', null]);
+
+    await t.test('Back from B to A revokes prior picks for E and Enter', () => {
+      stop();
+      location = new URL('https://town.test/?walk=1&as=herdr%3AA');
+      useOffice.setState({ ...initial, ...roster, pickedResidentIds: new Set(['herdr:B']) }, true);
+      stop = followSessionUrl();
+      assert.equal(useOffice.getState().pickedResidentIds.size, 0);
+      const [a, b] = roster.bots;
+      selectCitizen(a);
+      selectCitizen(b);
+      location = new URL(history[--index]);
+      browser.dispatchEvent(new Event('popstate'));
+      assert.deepEqual(identities(), [a.id, a.id, null]);
+      for (const key of ['e', 'Enter']) {
+        press(key);
+        assert.equal(useOffice.getState().terminalFull, a.id);
+        assert.equal(useOffice.getState().terminalInput, null);
+        closeTerminal();
+      }
+      press('e');
+      assert.equal(enableTerminalInput(a.id), true);
+      assert.equal(useOffice.getState().terminalInput, a.id);
+      closeTerminal();
+      selectCitizen(a);
+      press('e');
+      assert.equal(useOffice.getState().terminalInput, a.id);
+    });
 
     for (const reason of ['missing', 'offline']) {
       stop();
