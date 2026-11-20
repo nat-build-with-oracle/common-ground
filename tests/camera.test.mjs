@@ -96,6 +96,8 @@ test('line and page notches override prior trackpad evidence without reloading',
   assert.equal(lineNotch.action, 'wheel');
   assert.equal(continuesWheelBurst({ ctrlKey: false, shiftKey: false, deltaMode: 1, deltaX: 0, deltaY: 3, timeStamp: 30 }, lineNotch, 'auto'), true);
   assert.equal(classifyWheelBurst({ ctrlKey: true, shiftKey: false, deltaMode: 2, deltaX: 0, deltaY: 1, timeStamp: 30 }, lineNotch).action, 'wheel');
+  assert.equal(classifyWheelBurst({ ctrlKey: false, shiftKey: true, deltaMode: 1, deltaX: 0, deltaY: 3, timeStamp: 40 }, lineNotch).action, 'pan');
+  assert.equal(classifyWheelBurst({ ctrlKey: false, shiftKey: false, deltaMode: 1, deltaX: 0, deltaY: 3, timeStamp: 40 }, lineNotch, 'pan').action, 'pan');
 });
 
 test('wheel steps normalize, accumulate smoothly, reverse exactly and cap large impulses', () => {
