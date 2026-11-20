@@ -12,8 +12,8 @@ function ThemePicker() {
 }
 
 const SCROLL_WHEEL_MODES: { id: ScrollWheelMode; label: string }[] = [
+  { id: "zoom", label: "Zoom" },
   { id: "auto", label: "Auto" },
-  { id: "zoom", label: "Zoom (mouse)" },
   { id: "pan", label: "Pan (trackpad)" },
 ];
 

@@ -55,7 +55,7 @@ const initialState = (): State => ({
   hostAuth: "missing", live: {}, feed: [], terminals: {}, terminalEnabled: true, routinesEnabled: false,
   selected: null, hovered: null, focus: null, manual: { kind: "overview" }, manualAt: Date.now(), auto: false, pendingWalkId: null, sessionNotice: null,
   hudPanel: null, residentFilter: "all", atlasOpen: false, paletteOpen: false, terminalFull: null, terminalInput: null, pickedResidentIds: new Set(),
-  theme: DEFAULT_THEME, sound: false, voice: false, music: false, scrollWheelMode: "auto", caption: null,
+  theme: DEFAULT_THEME, sound: false, voice: false, music: false, scrollWheelMode: "zoom", caption: null,
   walking: false, walkingAs: null, walkHint: "", travel: null, walkTo: null, throwMode: false, balls: [], hits: {},
 });
 
