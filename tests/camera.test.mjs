@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { townFrame } from '../lib/camera.ts';
+import { classifyWheelBurst, townFrame, wheelPixels, wheelZoomFactor } from '../lib/camera.ts';
 
 test('town overview fits all ground corners in landscape, tall and mobile canvases', () => {
   for (const [width, depth] of [[24,24], [90,75], [140,120]]) for (const aspect of [2, 1.4, .65, .3]) {
@@ -18,10 +18,28 @@ test('portrait fit increases distance, including empty-town dimensions', () => {
   assert.ok(Number.isFinite(townFrame(24,24,0).distance));
 });
 
-test('wheel steps accumulate smoothly, reverse exactly and cap large impulses', async () => {
-  const { wheelZoomFactor: factor } = await import('../lib/camera.ts');
-  assert.ok(factor(100, false) > 1.15 && factor(100, false) < 1.2);
-  assert.ok(Math.abs(factor(1, false) ** 100 - factor(100, false)) < 1e-12);
-  assert.ok(Math.abs(factor(4, true) * factor(-4, true) - 1) < 1e-12);
-  assert.equal(factor(4000, true), Math.exp(.24));
+test('wheel burst classification distinguishes trackpad, mouse wheel and pinch', () => {
+  const sample = { ctrlKey: false, shiftKey: false, deltaMode: 0, deltaX: 0, deltaY: 12.4, timeStamp: 0 };
+  assert.equal(classifyWheelBurst(sample).action, 'pan');
+  const diagonal = classifyWheelBurst({ ...sample, deltaX: 8, deltaY: 10 });
+  assert.equal(diagonal.action, 'pan');
+  const notch = { ...sample, deltaY: 100 };
+  const tail = classifyWheelBurst({ ...notch, timeStamp: 120 }, diagonal);
+  assert.equal(tail.action, 'pan');
+  const momentum = classifyWheelBurst({ ...notch, timeStamp: 240 }, tail);
+  assert.equal(momentum.action, 'pan');
+  assert.equal(classifyWheelBurst({ ...notch, timeStamp: 400 }, momentum).action, 'wheel');
+  assert.equal(classifyWheelBurst({ ...notch, shiftKey: true }).action, 'pan');
+  assert.equal(classifyWheelBurst({ ...sample, deltaMode: 1, deltaY: 3 }).action, 'wheel');
+  assert.equal(classifyWheelBurst({ ...sample, deltaMode: 2, deltaY: 1 }).action, 'wheel');
+  assert.equal(classifyWheelBurst({ ...sample, ctrlKey: true }).action, 'pinch');
+});
+
+test('wheel steps normalize, accumulate smoothly, reverse exactly and cap large impulses', () => {
+  const lineNotch = wheelPixels(3, 1, 800);
+  assert.equal(lineNotch, 96);
+  assert.ok(wheelZoomFactor(lineNotch, false) > 1.15 && wheelZoomFactor(lineNotch, false) < 1.2);
+  assert.ok(Math.abs(wheelZoomFactor(1, false) ** 100 - wheelZoomFactor(100, false)) < 1e-12);
+  assert.ok(Math.abs(wheelZoomFactor(4, true) * wheelZoomFactor(-4, true) - 1) < 1e-12);
+  assert.equal(wheelZoomFactor(4000, true), Math.exp(.24));
 });
