@@ -1,7 +1,7 @@
 "use client";
 // Where fleet data comes from. Locally: this app's own /api routes (server holds the tokens).
 // On the hosted page (town.buildwithoracle.com): straight from the herdr serve named by ?host=,
-// with the operator's token from this tab only. Read-only either way.
+// with the operator's token, remembered in this browser (localStorage) for that host only. Read-only either way.
 import type { FleetSnapshot, OracleBot } from "@/lib/fleet-types";
 import type { TerminalSnapshot } from "@/lib/terminal-types";
 import { fleetSnapshot, mapHerdr } from "@/lib/fleet";
@@ -14,23 +14,25 @@ export class AuthNeeded extends Error {}
 export function hostChoice(): HostChoice { return HOSTED && typeof window !== "undefined" ? parseHost(window.location.search) : { kind: "none" }; }
 const key = (origin: string) => `office-town:token:${origin}`;
 /** One-click links: a `#token=…` fragment (fragments are never sent to any server) is moved into this
- * tab's sessionStorage for the ?host= origin, then wiped from the address bar and the history entry. */
+ * browser's localStorage for the ?host= origin, then wiped from the address bar and the history entry. */
 export function adoptFragmentToken(): void {
   if (!HOSTED || typeof window === "undefined") return;
   const match = /(?:^#|&)token=([^&]+)/.exec(window.location.hash);
   if (!match) return;
   const choice = parseHost(window.location.search);
-  try { if (choice.kind === "host") sessionStorage.setItem(key(choice.origin), decodeURIComponent(match[1])); } catch { /* storage blocked */ }
+  try { if (choice.kind === "host") localStorage.setItem(key(choice.origin), decodeURIComponent(match[1])); } catch { /* storage blocked */ }
   window.history.replaceState(window.history.state, "", window.location.pathname + window.location.search);
 }
-export function hostToken(origin: string) { adoptFragmentToken(); try { return sessionStorage.getItem(key(origin)) ?? ""; } catch { return ""; } }
-export function setHostToken(origin: string, token: string) { try { if (token) sessionStorage.setItem(key(origin), token); else sessionStorage.removeItem(key(origin)); } catch { /* storage blocked */ } }
+/** Older builds kept the token per tab; move it into localStorage so one paste lasts. */
+function migrate(origin: string) { try { const old = sessionStorage.getItem(key(origin)); if (old) { localStorage.setItem(key(origin), old); sessionStorage.removeItem(key(origin)); } } catch { /* storage blocked */ } }
+export function hostToken(origin: string) { adoptFragmentToken(); migrate(origin); try { return localStorage.getItem(key(origin)) ?? ""; } catch { return ""; } }
+export function setHostToken(origin: string, token: string) { try { if (token) localStorage.setItem(key(origin), token); else localStorage.removeItem(key(origin)); } catch { /* storage blocked */ } }
 
 async function hostGet(origin: string, path: string, signal?: AbortSignal): Promise<unknown> {
   const token = hostToken(origin);
   if (!token) throw new AuthNeeded("Paste your herdr serve token to connect");
   const response = await fetch(origin + path, { headers: { authorization: `Bearer ${token}`, accept: "application/json" }, cache: "no-store", credentials: "omit", signal });
-  if (response.status === 401 || response.status === 403) throw new AuthNeeded("herdr serve refused the token");
+  if (response.status === 401 || response.status === 403) { setHostToken(origin, ""); throw new AuthNeeded("herdr serve refused the token"); }
   if (!response.ok) throw new Error(`herdr serve returned HTTP ${response.status}`);
   return response.json();
 }
@@ -92,7 +94,7 @@ export async function openPty(bot: OracleBot, signal?: AbortSignal): Promise<Web
   const origin = host(), token = hostToken(origin);
   if (!token) throw new AuthNeeded("Paste your herdr serve token to connect");
   const response = await fetch(`${origin}/api/auth/ws-ticket`, { method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body: JSON.stringify({ path: "/ws/pty" }), credentials: "omit", signal });
-  if (response.status === 401 || response.status === 403) throw new AuthNeeded("herdr serve refused the token");
+  if (response.status === 401 || response.status === 403) { setHostToken(origin, ""); throw new AuthNeeded("herdr serve refused the token"); }
   const data = await response.json() as { protocol?: string; ticket?: string };
   if (!response.ok || !data.ticket) throw new Error(`No terminal ticket (HTTP ${response.status})`);
   const socket = new WebSocket(origin.replace(/^http/, "ws") + "/ws/pty", [data.protocol ?? "maw.ws.v1", data.ticket]);

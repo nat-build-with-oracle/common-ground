@@ -130,7 +130,7 @@ your own `maw herdr serve` named by `?host=` (the drizzle.studio pattern), so fl
 through Cloudflare.
 
 1. Run herdr serve and allow the site: `maw herdr serve --token-file ~/.maw-herdr-token --listen 127.0.0.1:3457 --allow-origin https://town.buildwithoracle.com`
-2. Open `https://town.buildwithoracle.com/?host=http://127.0.0.1:3457` and paste the token (kept in that tab's sessionStorage only, sent only to that host).
+2. Open `https://town.buildwithoracle.com/?host=http://127.0.0.1:3457` and paste the token (remembered in this browser's localStorage for that host, sent only to that host; a refused token is forgotten).
 
 An allowed origin can read every pane that server sees. Deploy: `npm run deploy:town` (`OFFICE_HOSTED=1` static export via
 `app/*.web.tsx` entries, then `wrangler deploy -c wrangler.town.json`). Hosted mode reads Herdr only (no MAW / federation).

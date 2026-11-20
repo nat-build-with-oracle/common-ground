@@ -1,13 +1,14 @@
 "use client";
 // Hosted page only. Without a host or token you land in the synthetic mockup town (walk, play,
 // look around) and this small card explains how to connect your own maw herdr serve.
-// The token stays in this tab (sessionStorage) and is sent only to that host.
+// The token is remembered in this browser (localStorage) for that host and is sent only to that host.
 import { useEffect, useState } from "react";
 import { refreshFleet, setPreview, useOffice } from "../store";
 import { HOSTED, hostChoice, hostToken, setHostToken } from "./source";
 import { startWalking } from "../SessionUrl";
 
 const SITE = "https://town.buildwithoracle.com";
+const LOOPBACK = /^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/;
 const SERVE = `maw herdr serve --token-file ~/.maw-herdr-token --listen 127.0.0.1:3457 --allow-origin ${SITE}`;
 
 export default function SourceGate() {
@@ -40,11 +41,11 @@ export default function SourceGate() {
     {open && <div className="gate-body">
       <p>You are walking a synthetic town (<kbd>H</kbd> to walk, <kbd>⌘K</kbd> for everything). To see your real agents, your browser reads <b>your own</b> maw herdr serve; nothing passes through this site.</p>
       <ol>
-        <li>Start herdr serve and allow this site:<code>{SERVE}</code></li>
+        {!(choice.kind === "host" && !LOOPBACK.test(choice.origin)) && <li>Start herdr serve and allow this site:<code>{SERVE}</code></li>}
         {choice.kind !== "host" ? <li>Open this page with your host:
           <form onSubmit={go}><input aria-label="herdr serve address" value={hostValue} onChange={event => setHostValue(event.target.value)} /><button className="ink-button">Open</button></form>
           {choice.kind === "invalid" && <small className="gate-error">“{choice.value}” is not a bare origin.</small>}</li>
-        : <li>Paste the token (<code className="inline">pbcopy &lt; ~/.maw-herdr-token</code>). It stays in this tab and goes only to {choice.origin}. With it, the full-screen terminal can type into agents.
+        : <li>Paste the herdr serve token{LOOPBACK.test(choice.origin) ? <> (<code className="inline">pbcopy &lt; ~/.maw-herdr-token</code>)</> : <> of {choice.origin.replace(/^https?:\/\//, "")} (the token file on that box)</>}. This browser remembers it, so you paste once; it goes only to {choice.origin}. With it, the full-screen terminal can type into agents.
           <form onSubmit={connect}><input type="password" autoComplete="off" aria-label="herdr serve token" value={token} onChange={event => setToken(event.target.value)} placeholder="token" /><button className="ink-button" disabled={!token.trim()}>Connect</button></form></li>}
       </ol>
       <a className="text-button" href="https://github.com/nat-build-with-oracle/oracle-office-town#hosted-townbuildwithoraclecom" target="_blank" rel="noreferrer noopener">Full instructions ↗</a>
