@@ -25,12 +25,22 @@ export function closeBook() {
  *  the whole nation stops the walk and shows the god view. */
 export function visitZone(id?: string) {
   const walking = useOffice.getState().walking;
-  if (walking && !id) { setOffice({ walking: false, selected: null, hudPanel: null, manual: { kind: "overview" }, manualAt: Date.now() }); return; }
+  if (walking && !id) { setOffice({ walking: false, walkingAs: null, selected: null, hudPanel: null, manual: { kind: "overview" }, manualAt: Date.now() }); return; }
   setOffice({ hudPanel: null, selected: null, manual: id ? { kind: "zone", id } : { kind: "overview" }, manualAt: Date.now(), ...(walking && id ? { travel: id } : {}) });
 }
+export function walkAs(id: string) {
+  setOffice({ walking: true, walkingAs: id, selected: null, hudPanel: null, atlasOpen: false, manual: null, manualAt: Date.now() });
+  sfx("pop");
+}
+export function stopWalking() {
+  setOffice({ walking: false, walkingAs: null, selected: null, hudPanel: null, atlasOpen: false, manual: { kind: "overview" }, manualAt: Date.now() });
+  sfx("pop");
+}
 export function toggleWalk() {
-  const walking = !useOffice.getState().walking;
-  setOffice({ walking, selected: null, hudPanel: null, atlasOpen: false, manual: walking ? null : { kind: "overview" }, manualAt: Date.now() });
+  const state = useOffice.getState();
+  if (state.selected && (!state.walking || state.walkingAs !== state.selected)) return walkAs(state.selected);
+  if (state.walking) return stopWalking();
+  setOffice({ walking: true, walkingAs: null, selected: null, hudPanel: null, atlasOpen: false, manual: null, manualAt: Date.now() });
   sfx("pop");
 }
 

@@ -1,6 +1,6 @@
 "use client";
 // You, walking in the nation. One more crowd agent steered by the keyboard: citizens step around you,
-// balls bounce off you, and E says hi to whoever is closest. Nothing here talks to a real agent.
+// balls bounce off you, and E interacts with the resident you embody or whoever is closest.
 import { Html } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
 import { CapsuleCollider, RigidBody, type RapierRigidBody } from "@react-three/rapier";
@@ -30,17 +30,19 @@ function lastSpot(world: World): { x: number; z: number } | null {
 }
 
 export default function Human({ world, nav }: { world: World; nav: Nav | null }) {
-  const walking = useOffice(s => s.walking);
+  const walking = useOffice(s => s.walking), walkingAs = useOffice(s => s.walkingAs);
+  const possessed = useOffice(s => s.bots.find(bot => bot.id === s.walkingAs));
   const [rt, setRt] = useState<Rt>();
   const root = useRef<Group>(null), body = useRef<RapierRigidBody>(null);
 
   useEffect(() => {
     if (!walking || !nav) return;
-    const at = lastSpot(world) ?? humanSpawn(world);
+    const oracle = walkingAs ? nav.rts.get(walkingAs) : undefined;
+    const at = oracle ? { x: oracle.x, z: oracle.z } : lastSpot(world) ?? humanSpawn(world);
     setRt(nav.spawnPlayer(at.x, at.z));
     const save = window.setInterval(() => { const me = nav.playerRt; if (me) try { sessionStorage.setItem(SPOT, JSON.stringify({ x: +me.x.toFixed(2), z: +me.z.toFixed(2) })); } catch { /* storage blocked */ } }, 1000);
     return () => { window.clearInterval(save); nav.removePlayer(); setRt(undefined); };
-  }, [walking, nav, world]);
+  }, [walking, walkingAs, nav, world]);
 
   const travel = useOffice(s => s.travel), walkTo = useOffice(s => s.walkTo), selected = useOffice(s => s.selected);
   const marker = useRef<Mesh>(null), lastSelected = useRef<string | null>(null);
@@ -51,14 +53,14 @@ export default function Human({ world, nav }: { world: World; nav: Nav | null })
   }, [walkTo, walking, nav]);
   // Picking an agent while walking takes you to them: walk if they are near, warp if they are far.
   useEffect(() => {
-    if (!walking || !nav || !selected || selected === lastSelected.current) { lastSelected.current = selected; return; }
+    if (!walking || !nav || !selected || selected === walkingAs || selected === lastSelected.current) { lastSelected.current = selected; return; }
     lastSelected.current = selected;
     const me = nav.playerRt, them = nav.rts.get(selected);
     if (!me || !them) return;
     const spot = { x: them.x, z: them.z + 1.3 };
     if (Math.hypot(spot.x - me.x, spot.z - me.z) < 14) nav.walkPlayerTo(spot.x, spot.z, true);
     else nav.teleportPlayer(spot.x, spot.z, Math.PI);
-  }, [selected, walking, nav]);
+  }, [selected, walking, walkingAs, nav]);
   useEffect(() => {
     if (!travel) return;
     const zone = world.zones.find(candidate => candidate.id === travel);
@@ -71,10 +73,15 @@ export default function Human({ world, nav }: { world: World; nav: Nav | null })
     let quiet = 0;
     const say = (text: string) => { setOffice({ walkHint: text }); window.clearTimeout(quiet); quiet = window.setTimeout(() => setOffice({ walkHint: "" }), 4000); };
     const greet = () => {
+      const state = useOffice.getState();
       const me = nav.playerRt;
       if (!me) return;
       let nearest: string | null = null, best = 2.6;
-      for (const [id, other] of nav.rts) { const d = Math.hypot(other.x - me.x, other.z - me.z); if (d < best) { best = d; nearest = id; } }
+      for (const [id, other] of nav.rts) {
+        if (id === state.walkingAs) continue;
+        const d = Math.hypot(other.x - me.x, other.z - me.z);
+        if (d < best) { best = d; nearest = id; }
+      }
       const bot = nearest ? useOffice.getState().bots.find(candidate => candidate.id === nearest) : undefined;
       if (!bot) { say("Nobody within reach. Walk up to someone first."); return; }
       setOffice({ caption: { botId: bot.id, text: greeting(bot, nav.rts.get(bot.id)?.goal.label?.replace(/ \(simulated\)$/, "")) }, hovered: bot.id });
@@ -95,7 +102,7 @@ export default function Human({ world, nav }: { world: World; nav: Nav | null })
       if (MOVE[event.code] || event.code.startsWith("Shift")) { keys.add(event.code); if (MOVE[event.code]) event.preventDefault(); }
       if (event.repeat) return;
       if (matchActive()) return; // in a match E passes and F kicks (football.controls)
-      if (event.code === "KeyE") greet();
+      if (event.code === "KeyE" && (!open.walkingAs || open.preview)) greet();
       if (event.code === "KeyF") toss();
     };
     const up = (event: KeyboardEvent) => { keys.delete(event.code); };
@@ -126,9 +133,9 @@ export default function Human({ world, nav }: { world: World; nav: Nav | null })
     <mesh ref={marker} rotation-x={-Math.PI / 2} visible={false}><ringGeometry args={[.28, .38, 24]} /><meshBasicMaterial color="#ffcf5a" transparent opacity={.85} /></mesh>
     <RigidBody ref={body} type="kinematicPosition" colliders={false} position={[rt.x, 0, rt.z]}><CapsuleCollider args={[.4, .33]} position={[0, .73, 0]} /></RigidBody>
     <group ref={root} position={[rt.x, 0, rt.z]}>
-      <Suspense fallback={null}><Citizen id="human:you" rt={rt} status="idle" /></Suspense>
-      <mesh rotation-x={-Math.PI / 2} position-y={.04}><ringGeometry args={[.42, .53, 28]} /><meshBasicMaterial color="#ffcf5a" transparent opacity={.9} /></mesh>
-      <Html position={[0, 2.05, 0]} center zIndexRange={[70, 0]} style={{ pointerEvents: "none" }}><div className="marker near"><div className="marker-name you">You</div></div></Html>
+      <Suspense fallback={null}><Citizen id={possessed?.id ?? "human:you"} rt={rt} status={possessed?.status ?? "idle"} /></Suspense>
+      <mesh rotation-x={-Math.PI / 2} position-y={.04}><ringGeometry args={[.42, .53, 28]} /><meshBasicMaterial color={possessed?.color ?? "#ffcf5a"} transparent opacity={.9} /></mesh>
+      <Html position={[0, 2.05, 0]} center zIndexRange={[70, 0]} style={{ pointerEvents: "none" }}><div className="marker near"><div className="marker-name you" style={possessed ? { background: possessed.color } : undefined}>{possessed ? `${possessed.name} · you` : "You"}</div></div></Html>
     </group>
   </>;
 }

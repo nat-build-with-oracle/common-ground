@@ -33,6 +33,7 @@ export async function refreshFleet() {
       hostAuth: "ok", ...snapshot, bots, sections, nodes: Array.isArray(snapshot.nodes) ? snapshot.nodes : [], loading: false, error: "", connected: snapshot.sources.some(s => s.status === "connected"),
       feed: [...changes, ...previous.feed].slice(0, 60),
       live: { ...previous.live, ...Object.fromEntries(changes.map(a => [a.botId, a])) },
+      walkingAs: bots.some(bot => bot.id === previous.walkingAs) ? previous.walkingAs : null,
       selected: bots.some(bot => bot.id === previous.selected) ? previous.selected : null,
     });
     announce(changes);
@@ -51,9 +52,9 @@ export function setPreview(enabled: boolean) {
   ++generation; controller?.abort();
   setOffice({ terminals: {} });
   if (enabled) {
-    setOffice({ ...previewFleet(), preview: true, loading: false, connected: false, error: "", selected: null, live: {}, feed: [], manual: { kind: "overview" }, manualAt: Date.now() });
+    setOffice({ ...previewFleet(), preview: true, walkingAs: null, loading: false, connected: false, error: "", selected: null, live: {}, feed: [], manual: { kind: "overview" }, manualAt: Date.now() });
   } else {
-    setOffice({ bots: [], groups: [], sections: [], sources: [], nodes: [], updatedAt: 0, preview: false, selected: null, feed: [], live: {}, loading: true });
+    setOffice({ bots: [], groups: [], sections: [], sources: [], nodes: [], updatedAt: 0, preview: false, walkingAs: null, selected: null, feed: [], live: {}, loading: true });
     void refreshFleet();
   }
 }

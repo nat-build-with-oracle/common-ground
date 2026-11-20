@@ -38,7 +38,7 @@ type Interface = {
 };
 /** You, walking, and what you throw. */
 type Play = {
-  walking: boolean; walkHint: string;
+  walking: boolean; walkingAs: string | null; walkHint: string;
   /** Picked a place while walking: fast-travel there (Human handles it, then clears it). */ travel: string | null;
   /** Clicked the ground while walking: go there (Human handles it, then clears it). */ walkTo: { x: number; z: number; run: boolean } | null;
   throwMode: boolean; balls: Ball[];
@@ -52,9 +52,11 @@ const initialState = (): State => ({
   selected: null, hovered: null, focus: null, manual: { kind: "overview" }, manualAt: Date.now(), auto: false, sessionNotice: null,
   hudPanel: null, residentFilter: "all", atlasOpen: false, paletteOpen: false, terminalFull: null,
   theme: DEFAULT_THEME, sound: false, voice: false, music: false, scrollWheelMode: "auto", caption: null,
-  walking: false, walkHint: "", travel: null, walkTo: null, throwMode: false, balls: [], hits: {},
+  walking: false, walkingAs: null, walkHint: "", travel: null, walkTo: null, throwMode: false, balls: [], hits: {},
 });
 
 export const useOffice = create<State>(initialState);
 export const setOffice = useOffice.setState;
 export const botById = (id: string | null) => id ? useOffice.getState().bots.find(bot => bot.id === id) : undefined;
+/** A possessed resident stays in the fleet/crowd, but their ordinary scene figure is replaced by the player. */
+export const residentFigureVisible = (id: string, walkingAs: string | null) => id !== walkingAs;

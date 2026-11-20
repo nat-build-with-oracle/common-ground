@@ -31,7 +31,7 @@ export function hudShortcut(event: KeyInput): string | null {
   if (event.target?.isContentEditable || /^(INPUT|TEXTAREA|SELECT|BUTTON|A)$/.test(event.target?.tagName ?? '')) return null;
   const key = event.key.toLowerCase();
   if (/^[0-9]$/.test(key)) return `district:${(Number(key) + 9) % 10}`;
-  return ({ r: 'residents', j: 'journal', m: 'map', t: 'terminal', c: 'cabinet', h: 'walk', b: 'music', g: 'football' } as Record<string, string>)[key] ?? null;
+  return ({ enter: 'open-terminal', e: 'interact', r: 'residents', j: 'journal', m: 'map', t: 'terminal', c: 'cabinet', h: 'walk', b: 'music', g: 'football' } as Record<string, string>)[key] ?? null;
 }
 
 /** What a citizen says when the human walks up and says hi. Built only from observed status (+ the simulated place). */

@@ -4,7 +4,7 @@ import { STATUS_LABEL } from "../../lib/hud.ts";
 import { THEMES } from "../../lib/themes.ts";
 
 export type PaletteAction =
-  | { kind: "follow"; id: string } | { kind: "terminal"; id: string } | { kind: "visit"; zone: string } | { kind: "overview" }
+  | { kind: "follow"; id: string } | { kind: "walkAs"; id: string } | { kind: "terminal"; id: string } | { kind: "visit"; zone: string } | { kind: "overview" }
   | { kind: "panel"; panel: "cabinet" | "residents" | "journal" | "settings" } | { kind: "walk" } | { kind: "music" } | { kind: "theme"; theme: string }
   | { kind: "football" } | { kind: "map" } | { kind: "clouds" } | { kind: "preview" };
 export type PaletteItem = { key: string; group: "Citizens" | "Places" | "Actions"; label: string; hint: string; search: string; action: PaletteAction };
@@ -14,7 +14,8 @@ export function paletteItems({ bots, zones, preview, walking, music, football = 
   const citizens = bots.flatMap(bot => {
     const about = `${STATUS_LABEL[bot.status]} · ${bot.project || "no project"} · ${bot.host}`;
     const follow: PaletteItem = { key: `follow:${bot.id}`, group: "Citizens", label: bot.name, hint: about, search: `${bot.name} ${bot.project} ${bot.host} ${bot.runtime}`, action: { kind: "follow", id: bot.id } };
-    return preview ? [follow] : [follow, { key: `terminal:${bot.id}`, group: "Citizens", label: `Terminal: ${bot.name}`, hint: "Full screen, read only", search: `terminal ${bot.name} ${bot.project} ${bot.host}`, action: { kind: "terminal", id: bot.id } } satisfies PaletteItem];
+    const possess: PaletteItem = { key: `walk-as:${bot.id}`, group: "Citizens", label: `Walk as ${bot.name}`, hint: "H", search: `walk as possess play ${bot.name} ${bot.project} ${bot.host}`, action: { kind: "walkAs", id: bot.id } };
+    return preview ? [follow, possess] : [follow, possess, { key: `terminal:${bot.id}`, group: "Citizens", label: `Terminal: ${bot.name}`, hint: "Full screen, read only", search: `terminal ${bot.name} ${bot.project} ${bot.host}`, action: { kind: "terminal", id: bot.id } } satisfies PaletteItem];
   });
   const places: PaletteItem[] = [{ key: "overview", group: "Places", label: "Whole nation", hint: "The big picture", search: "whole nation overview town map", action: { kind: "overview" } },
     ...zones.map(zone => ({ key: `visit:${zone.id}`, group: "Places" as const, label: zone.name, hint: "Go there", search: `${zone.name} ${zone.id}`, action: { kind: "visit", zone: zone.id } as PaletteAction }))];

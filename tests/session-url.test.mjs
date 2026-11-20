@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { sessionPath, parseSessionPath, resolveSession } from '../lib/session-url.ts';
+import { sessionPath, parseSessionPath, resolveSession, withWalking } from '../lib/session-url.ts';
 import { readTerminal } from '../lib/terminal-server.ts';
 import { mapHerdr, fleetSnapshot } from '../lib/fleet.ts';
 const config = [{id:'herdr',name:'Herdr',url:'http://127.0.0.1:3457',token:'server-secret'}];
@@ -51,4 +51,11 @@ test('a decoded URL id reaches the same read-only capture path and nothing clien
     const route = parseSessionPath(path);
     assert.equal((await readTerminal(route.id, fleet, config, none)).status, 'unavailable');
   }
+});
+
+test('walking URLs preserve other flags and clear the resident on return', () => {
+  const search = withWalking('?t=1', true, id);
+  assert.equal(new URLSearchParams(search).get('as'), id);
+  assert.equal(withWalking(search, true, null), '?t=1&walk=1');
+  assert.equal(withWalking(search, false, id), '?t=1');
 });

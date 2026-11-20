@@ -4,14 +4,15 @@ import { isThemeId } from "@/lib/themes";
 import { setOffice, setPreview, setTheme, useOffice } from "../store";
 import { endFootball, matchActive, startFootball } from "../game/football/football.store";
 import { toggleMusic } from "../music/music";
-import { openBook, toggleWalk, visitZone } from "../hud/hud.shared";
+import { openBook, toggleWalk, visitZone, walkAs } from "../hud/hud.shared";
 import type { PaletteAction } from "./palette.items";
 
 export function runAction(action: PaletteAction) {
   const state = useOffice.getState();
   setOffice({ paletteOpen: false });
   switch (action.kind) {
-    case "follow": setOffice({ selected: action.id, manual: null, hudPanel: null, walking: false }); break;
+    case "follow": setOffice({ selected: action.id, manual: null, hudPanel: null, walking: false, walkingAs: null }); break;
+    case "walkAs": walkAs(action.id); break;
     case "terminal": setOffice({ selected: action.id, terminalFull: action.id }); break;
     case "visit": visitZone(action.zone); break;
     case "overview": visitZone(); break;

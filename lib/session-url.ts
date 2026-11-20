@@ -41,3 +41,10 @@ export function withFlag(search: string, flag: UrlFlag, on: boolean) {
 }
 export const terminalOpen = (search: string) => flagOn(search, "t");
 export const withTerminal = (search: string, open: boolean) => withFlag(search, "t", open);
+
+export function withWalking(search: string, walking: boolean, resident: string | null) {
+  const params = new URLSearchParams(withFlag(search, "walk", walking));
+  if (walking && resident) params.set("as", resident);
+  else params.delete("as");
+  return params.size ? `?${params}` : "";
+}

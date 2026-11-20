@@ -36,10 +36,68 @@ registerHooks({
 });
 const { default: Hud } = await import('../components/Hud.tsx');
 const { default: TownMap } = await import('../components/TownMap.tsx');
-const { loadTheme, setScrollWheelMode, useOffice } = await import('../components/store.ts');
+const { loadTheme, residentFigureVisible, setScrollWheelMode, useOffice } = await import('../components/store.ts');
+const { stopWalking, toggleWalk, visitZone, walkAs } = await import('../components/hud/hud.shared.tsx');
+const { handleHudKey } = await import('../components/hud/hud.keys.ts');
 const { buildWorld } = await import('../components/world.ts');
 const initial = useOffice.getState();
 const render = (state = {}) => { useOffice.setState({ ...initial, ...state }, true); return renderToStaticMarkup(React.createElement(Hud)); };
+
+test('walk controls enter, switch, and exit oracle bodies without retaining stale identity', () => {
+  useOffice.setState({ ...initial, selected: 'oracle-a' }, true);
+  toggleWalk(); // H on a selected resident
+  assert.equal(useOffice.getState().walking, true);
+  assert.equal(useOffice.getState().walkingAs, 'oracle-a');
+  assert.equal(useOffice.getState().selected, null);
+
+  useOffice.setState({ selected: 'oracle-b' });
+  toggleWalk(); // H on a different selected resident switches bodies
+  assert.equal(useOffice.getState().walking, true);
+  assert.equal(useOffice.getState().walkingAs, 'oracle-b');
+
+  stopWalking(); // Escape while possessed
+  assert.equal(useOffice.getState().walking, false);
+  assert.equal(useOffice.getState().walkingAs, null);
+
+  toggleWalk(); // plain H remains walk as You
+  assert.equal(useOffice.getState().walking, true);
+  assert.equal(useOffice.getState().walkingAs, null);
+
+  walkAs('oracle-a');
+  toggleWalk(); // H again releases this resident
+  assert.equal(useOffice.getState().walking, false);
+  assert.equal(useOffice.getState().walkingAs, null);
+
+  walkAs('oracle-a'); // resident card or palette action
+  visitZone(); // every walk exit clears the possessed identity
+  assert.equal(useOffice.getState().walking, false);
+  assert.equal(useOffice.getState().walkingAs, null);
+});
+
+test('oracle shortcuts target the possessed pane, keep preview terminal-free, and release on Esc', () => {
+  const press = key => handleHudKey({ key, target: null, preventDefault() {} });
+  useOffice.setState({ ...initial, selected: 'oracle-a' }, true);
+  press('h');
+  useOffice.setState({ selected: 'oracle-b' });
+  for (const key of ['e', 'Enter']) {
+    press(key);
+    assert.equal(useOffice.getState().terminalFull, 'oracle-a');
+    useOffice.setState({ terminalFull: null });
+  }
+  useOffice.setState({ preview: true });
+  press('e');
+  press('Enter');
+  assert.equal(useOffice.getState().terminalFull, null);
+  press('Escape');
+  assert.equal(useOffice.getState().walking, false);
+  assert.equal(useOffice.getState().walkingAs, null);
+});
+
+test('the possessed resident figure is hidden without removing other residents', () => {
+  assert.equal(residentFigureVisible('oracle-a', 'oracle-a'), false);
+  assert.equal(residentFigureVisible('oracle-b', 'oracle-a'), true);
+  assert.equal(residentFigureVisible('oracle-a', null), true);
+});
 
 test('crest has intrinsic bounded dimensions and every new HUD surface has its stylesheet', () => {
   const markup = render();
@@ -62,6 +120,19 @@ test('all field books render with named close controls and explicit empty/previe
   assert.match(preview, /SYNTHETIC PREVIEW/);
   assert.match(preview, /Unavailable in synthetic preview/);
   assert.match(preview, /This viewer never sends commands/);
+});
+test('resident surfaces offer walk-as and the possessed HUD keeps live status visible', () => {
+  const bot = { id: 'beta', name: 'beta-oracle', color: '#f09b82', title: 'Codex', sectionId: null, status: 'blocked', working: false, seenAt: Date.now(), source: 'herdr', host: 'm5', runtime: 'codex', pane: '%12', project: 'common-ground', href: '' };
+  const residents = render({ bots: [bot], hudPanel: 'residents' });
+  assert.match(residents, /aria-label="Walk as beta-oracle"/);
+
+  const walking = render({ bots: [bot], walking: true, walkingAs: bot.id });
+  assert.match(walking, /class="walking-as-chip" role="status"/);
+  assert.match(walking, /Walking as <b>beta-oracle<\/b> · Needs input · <kbd>Esc<\/kbd> to return/);
+  assert.match(walking, /<kbd>E<\/kbd> \/ <kbd>Enter<\/kbd> terminal/);
+
+  const preview = render({ bots: [bot], walking: true, walkingAs: bot.id, preview: true });
+  assert.doesNotMatch(preview, /<kbd>Enter<\/kbd> terminal/);
 });
 test('scroll wheel setting renders all modes and persists the selected mode', () => {
   const markup = render({ hudPanel: 'settings', scrollWheelMode: 'auto' });
