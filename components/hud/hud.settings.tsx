@@ -1,6 +1,6 @@
 "use client";
 import { THEMES, themeById } from "@/lib/themes";
-import { addBall, refreshFleet, setOffice, setPreview, setTheme, useOffice } from "../store";
+import { addBall, refreshFleet, setOffice, setPreview, setScrollWheelMode, setTheme, useOffice, type ScrollWheelMode } from "../store";
 import { Icon } from "../Icons";
 import { hush, sfx, unlockAudio } from "../sound";
 import { toggleMusic } from "../music/music";
@@ -9,6 +9,17 @@ import { ago, Book, Toggle } from "./hud.shared";
 function ThemePicker() {
   const theme = useOffice(s => s.theme);
   return <><h3 className="section-label">Theme</h3><div className="resident-filters theme-picker" role="radiogroup" aria-label="Town theme">{THEMES.map(item => <button key={item.id} role="radio" aria-checked={theme === item.id} aria-pressed={theme === item.id} title={item.blurb} onClick={() => { setTheme(item.id); sfx("pop"); }}>{item.name}</button>)}</div><p className="book-intro">{themeById(theme).blurb}</p></>;
+}
+
+const SCROLL_WHEEL_MODES: { id: ScrollWheelMode; label: string }[] = [
+  { id: "auto", label: "Auto" },
+  { id: "zoom", label: "Zoom (mouse)" },
+  { id: "pan", label: "Pan (trackpad)" },
+];
+
+function ScrollWheelPicker() {
+  const mode = useOffice(state => state.scrollWheelMode);
+  return <><h3 className="section-label">Scroll wheel</h3><div className="resident-filters" role="radiogroup" aria-label="Scroll wheel behavior">{SCROLL_WHEEL_MODES.map(item => <button key={item.id} role="radio" aria-checked={mode === item.id} aria-pressed={mode === item.id} onClick={() => setScrollWheelMode(item.id)}>{item.label}</button>)}</div></>;
 }
 
 export function Settings() {
@@ -26,6 +37,7 @@ export function Settings() {
     <Toggle label="Terminal thought clouds" description={preview ? "Unavailable in synthetic preview." : "Read-only snapshots · ~2s · up to 4 citizens."} checked={terminalEnabled && !preview} disabled={preview} onChange={() => setOffice({ terminalEnabled: !terminalEnabled })} />
     <Toggle label="Off-duty wandering" description="Off by default. Optional staggered five-minute routines." checked={routines} onChange={() => setOffice({ routinesEnabled: !routines })} />
     <Toggle label="Follow the work" description="Camera tours working citizens; no agent control." checked={auto} onChange={() => setOffice({ auto: !auto, manual: auto ? { kind: "overview" } : null, manualAt: Date.now(), selected: null })} />
+    <ScrollWheelPicker />
     <h3 className="section-label">Sound</h3>
     <Toggle label="Nation music" description="Generated background music that follows Bangkok's day and night. Off by default." checked={music} onChange={toggleMusic} />
     <Toggle label="Town sounds" description="Local sound effects. Off by default." checked={sound} onChange={() => { sound ? hush() : unlockAudio(); setOffice({ sound: !sound }); }} />
