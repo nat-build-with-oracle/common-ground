@@ -6,16 +6,17 @@ import { CameraControls, CameraControlsImpl } from "@react-three/drei";
 import { useFrame, useThree } from "@react-three/fiber";
 import { useEffect, useRef } from "react";
 import { PerspectiveCamera, Raycaster, Spherical, Vector2, Vector3 } from "three";
-import { classifyWheelBurst, continuesWheelBurst, settleWheelBurst, WHEEL_DECISION_MS, type WheelBurst, townFrame, wheelPixels, wheelZoomFactor } from "@/lib/camera";
+import { type WheelBurst, townFrame, wheelPixels, wheelBurstZoomFactor } from "@/lib/camera";
 import type { Nav, Rt } from "../crowd";
 import { lookAt } from "../focus";
 import { ballCam } from "../game/football/football.store";
 import { setOffice, useOffice, type State } from "../store";
 import type { World } from "../world";
+import { attachCameraInput } from "./office.camera-input";
 import { createTownZoomAnchorCache } from "./office.camera-anchor";
+import { followSmoothTime, updateFollowTiming } from "./office.camera-follow";
 
 const HOLD_AFTER_ORBIT = 15_000; // ms the camera leaves you alone after you drag or scroll it
-const FLY_DOWN = 2_500;          // ms of slow arrival when a walk starts from the god view
 const MANUAL_SMOOTH_MS = 350;
 const TOUR_STOP = 10_000;        // ms on each working citizen while touring
 
@@ -100,10 +101,6 @@ export function Director({ world, nav }: { world: World; nav: Nav | null }) {
       void camera.dollyTo(next, true);
       moved();
     };
-    const safariGestures = "GestureEvent" in window;
-    let lastWheelBurst: WheelBurst | undefined;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    let flushPending: (() => void) | undefined;
     const applyWheel = (burst: WheelBurst, x: number, y: number, rect: DOMRect) => {
       const dy = wheelPixels(burst.deltaY, burst.deltaMode, rect.height);
       if (burst.action === "pan") {
@@ -113,72 +110,21 @@ export function Director({ world, nav }: { world: World; nav: Nav | null }) {
         moved();
         pauseWalkingFollow();
       } else {
-        dolly(wheelZoomFactor(dy, burst.action === "pinch"), x, y, rect);
+        dolly(wheelBurstZoomFactor(burst, rect.height), x, y, rect);
       }
     };
-    const wheel = (event: WheelEvent) => {
-      if (!acceptsInput()) return;
-      const deltaMode = event.deltaMode;
-      if (!(event.deltaX || event.deltaY)) return;
-      const rect = canvas.getBoundingClientRect();
-      if (!rect.width || !rect.height) return;
-      event.preventDefault();
-      if (deltaMode === 0 && event.ctrlKey && safariGestures) return;
-      const state = useOffice.getState(), mode = state.scrollWheelMode;
-      clearTimeout(timer);
-      if (!continuesWheelBurst(event, lastWheelBurst, mode)) {
-        flushPending?.();
-        anchorCache.reset();
-      }
-      flushPending = undefined;
-      const burst = classifyWheelBurst(event, lastWheelBurst, mode);
-      lastWheelBurst = burst;
-      if (burst.action !== "pending") {
-        applyWheel(burst, event.clientX, event.clientY, rect);
-        return;
-      }
-      flushPending = () => {
-        flushPending = undefined;
-        const current = useOffice.getState();
-        lastWheelBurst = settleWheelBurst(burst);
-        if (acceptsInput() && current.manualAt === state.manualAt && current.selected === state.selected)
-          applyWheel(lastWheelBurst, event.clientX, event.clientY, rect);
-      };
-      timer = setTimeout(flushPending, WHEEL_DECISION_MS);
-    };
-    // Safari trackpads publish cumulative scale. Physical touch already belongs to CameraControls.
-    let previousScale: number | null = null, touchCount = 0;
-    const touches = (event: TouchEvent) => { touchCount = event.touches.length; };
-    const gesture = (raw: Event) => {
-      const event = raw as MouseEvent & { scale: number };
-      if (event.type === "gestureend" || !acceptsInput() || touchCount) { previousScale = null; return; }
-      if (!Number.isFinite(event.scale) || event.scale <= 0) return;
-      const rect = canvas.getBoundingClientRect();
-      if (!rect.width || !rect.height) return;
-      event.preventDefault();
-      if (previousScale === null || event.type === "gesturestart") {
-        clearTimeout(timer);
-        flushPending?.();
-        lastWheelBurst = undefined;
-        anchorCache.reset();
-      }
-      if (event.type === "gesturechange" && previousScale !== null)
-        dolly(previousScale / event.scale, event.clientX, event.clientY, rect);
-      previousScale = event.scale;
-    };
-    const touchEvents = ["touchstart", "touchend", "touchcancel"] as const;
-    const gestureEvents = ["gesturestart", "gesturechange", "gestureend"];
-    if (safariGestures) {
-      for (const type of touchEvents) canvas.addEventListener(type, touches, { passive: true });
-      for (const type of gestureEvents) canvas.addEventListener(type, gesture, { passive: false });
-    }
-    canvas.addEventListener("wheel", wheel, { passive: false });
+    const input = attachCameraInput(canvas, "GestureEvent" in window, {
+      acceptsInput, mode: () => useOffice.getState().scrollWheelMode, resetAnchor: () => anchorCache.reset(),
+      wheel: applyWheel, pinch: dolly,
+    });
+    const unsubscribeNavigation = useOffice.subscribe((current, previous) => {
+      input.navigationChanged(current, previous);
+      if (previous.walking && !current.walking) updateFollowTiming(memory.current, false, performance.now());
+    });
     camera.addEventListener("control", nativeControl);
     return () => {
-      clearTimeout(timer);
-      for (const type of touchEvents) canvas.removeEventListener(type, touches);
-      for (const type of gestureEvents) canvas.removeEventListener(type, gesture);
-      canvas.removeEventListener("wheel", wheel);
+      unsubscribeNavigation();
+      input.dispose();
       camera.removeEventListener("control", nativeControl);
     };
   }, [canvas, nav, scene, world]);
@@ -190,14 +136,14 @@ export function Director({ world, nav }: { world: World; nav: Nav | null }) {
     if (!camera) return; // an empty town still has a camera, crowd or not
     camera.getTarget(lookAt.target); lookAt.active = true;
     const me = followedPlayer(state, nav);
-    m.walkingSince = me ? m.walkingSince || now : 0;
     if (state.manualAt !== m.pickedAt || state.selected !== m.selected) {
       Object.assign(m, { pickedAt: state.manualAt, selected: state.selected, holdUntil: 0, manualUntil: 0, followPausedUntil: 0, nextAim: 0 });
     }
-    camera.dollyToCursor = !me || now < m.followPausedUntil; // Native touch uses its pinch midpoint during inspection.
-    camera.smoothTime = !me ? (now < m.manualUntil ? .12 : .55) : ballCam.live ? .55 : now - m.walkingSince < FLY_DOWN ? 1.2 : .18; // then keep up with a sprint
+    const followPaused = updateFollowTiming(m, Boolean(me), now);
+    camera.dollyToCursor = !me || followPaused; // Native touch uses its pinch midpoint during inspection.
+    camera.smoothTime = !me ? (now < m.manualUntil ? .12 : .55) : followSmoothTime(m, now, ballCam.live);
     if (me) {
-      if (now >= m.followPausedUntil) follow(camera, m, me);
+      if (!followPaused) follow(camera, m, me);
       return;
     }
 

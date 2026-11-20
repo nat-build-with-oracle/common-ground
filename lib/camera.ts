@@ -24,8 +24,10 @@ export type WheelBurst = {
   deltaMode: number;
   deltaX: number;
   deltaY: number;
+  deltaYs: number[];
   mode: ScrollWheelMode;
   shiftKey: boolean;
+  startedAt: number;
   timeStamp: number;
 };
 export type WheelSample = Pick<WheelEvent, "ctrlKey" | "deltaMode" | "deltaX" | "deltaY" | "shiftKey" | "timeStamp">;
@@ -50,8 +52,8 @@ export function classifyWheelBurst(event: WheelSample, previous?: WheelBurst, mo
   else if (mode === "zoom") action = "wheel";
   else if (prior && prior.action !== "pending") action = prior.action;
   else if (pending) {
-    const inWindow = event.timeStamp - pending.timeStamp <= WHEEL_DECISION_MS;
-    action = inWindow && trackpadSample ? "pan" : settleWheelBurst(pending).action;
+    const inWindow = event.timeStamp - pending.startedAt <= WHEEL_DECISION_MS;
+    action = inWindow ? (trackpadSample ? "pan" : "pending") : settleWheelBurst(pending).action;
   } else action = trackpadSample ? "pan" : "pending";
 
   return {
@@ -60,8 +62,10 @@ export function classifyWheelBurst(event: WheelSample, previous?: WheelBurst, mo
     deltaMode: event.deltaMode,
     deltaX: event.deltaX + (pending?.deltaX ?? 0),
     deltaY: event.deltaY + (pending?.deltaY ?? 0),
+    deltaYs: pending ? [...pending.deltaYs, event.deltaY] : [event.deltaY],
     mode,
     shiftKey: event.shiftKey,
+    startedAt: pending?.startedAt ?? event.timeStamp,
     timeStamp: event.timeStamp,
   };
 }
@@ -81,4 +85,10 @@ export function wheelPixels(delta: number, mode: number, pageHeight: number) {
 export function wheelZoomFactor(pixels: number, pinch: boolean) {
   const sensitivity = pinch ? PINCH_ZOOM_SENSITIVITY : WHEEL_ZOOM_SENSITIVITY;
   return Math.exp(Math.max(-.24, Math.min(.24, pixels * sensitivity)));
+}
+
+/** Apply accelerated-wheel limiting independently to every sample buffered for classification. */
+export function wheelBurstZoomFactor(burst: WheelBurst, pageHeight: number) {
+  return burst.deltaYs.reduce((factor, deltaY) =>
+    factor * wheelZoomFactor(wheelPixels(deltaY, burst.deltaMode, pageHeight), burst.action === "pinch"), 1);
 }

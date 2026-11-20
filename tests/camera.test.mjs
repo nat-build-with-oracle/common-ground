@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { classifyWheelBurst, continuesWheelBurst, settleWheelBurst, townFrame, wheelPixels, wheelZoomFactor } from '../lib/camera.ts';
+import { classifyWheelBurst, continuesWheelBurst, settleWheelBurst, townFrame, wheelBurstZoomFactor, wheelPixels, wheelZoomFactor } from '../lib/camera.ts';
 
 test('town overview fits all ground corners in landscape, tall and mobile canvases', () => {
   for (const [width, depth] of [[24,24], [90,75], [140,120]]) for (const aspect of [2, 1.4, .65, .3]) {
@@ -77,9 +77,11 @@ test('auto mode buffers ambiguous starts and locks the chosen action through mom
   }
 
   const secondSample = classifyWheelBurst({ ...base, deltaY: 30, timeStamp: 20 }, initiallyAmbiguous);
-  assert.equal(secondSample.action, 'wheel');
+  assert.equal(secondSample.action, 'pending');
   assert.equal(secondSample.deltaY, 90);
-  assert.equal(classifyWheelBurst({ ...base, deltaX: 3, timeStamp: 30 }, secondSample).action, 'wheel');
+  assert.equal(classifyWheelBurst({ ...base, deltaX: 3, timeStamp: 30 }, secondSample).action, 'pan');
+  assert.equal(classifyWheelBurst({ ...base, deltaX: 3, timeStamp: 41 }, secondSample).action, 'wheel');
+  assert.equal(settleWheelBurst(secondSample).action, 'wheel');
   assert.equal(settleWheelBurst(classifyWheelBurst({ ...base, deltaY: 8 })).action, 'pan');
 
   const lateEvidence = classifyWheelBurst({ ...base, deltaX: 1, timeStamp: 41 }, initiallyAmbiguous);
@@ -103,4 +105,14 @@ test('wheel steps normalize, accumulate smoothly, reverse exactly and cap large 
   assert.ok(Math.abs(wheelZoomFactor(1, false) ** 100 - wheelZoomFactor(100, false)) < 1e-12);
   assert.ok(Math.abs(wheelZoomFactor(4, true) * wheelZoomFactor(-4, true) - 1) < 1e-12);
   assert.equal(wheelZoomFactor(4000, true), Math.exp(.24));
+});
+
+test('each buffered wheel notch receives its own zoom cap', () => {
+  const sample = { ctrlKey: false, shiftKey: false, deltaMode: 0, deltaX: 0, deltaY: 100, timeStamp: 0 };
+  const first = classifyWheelBurst(sample);
+  const rapid = settleWheelBurst(classifyWheelBurst({ ...sample, timeStamp: 20 }, first));
+  const oneNotch = wheelBurstZoomFactor(settleWheelBurst(first), 800);
+  const spaced = oneNotch * wheelBurstZoomFactor(settleWheelBurst(classifyWheelBurst({ ...sample, timeStamp: 200 })), 800);
+
+  assert.equal(wheelBurstZoomFactor(rapid, 800), spaced);
 });
