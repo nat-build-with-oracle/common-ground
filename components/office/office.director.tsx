@@ -2,10 +2,11 @@
 // The camera. While you walk it follows you (between you and the ball during a match). Otherwise it frames whoever
 // is selected, a district picked by hand, a working citizen on tour, or the whole town. Dragging or scrolling holds
 // it still for a while. It publishes what it looks at (focus.lookAt) so homes standing in the way can fade.
-import { CameraControls } from "@react-three/drei";
+import { CameraControls, CameraControlsImpl } from "@react-three/drei";
 import { useFrame, useThree } from "@react-three/fiber";
 import { useEffect, useRef } from "react";
-import { townFrame } from "@/lib/camera";
+import { PerspectiveCamera, Spherical } from "three";
+import { townFrame, wheelZoomFactor } from "@/lib/camera";
 import type { Nav, Rt } from "../crowd";
 import { lookAt } from "../focus";
 import { ballCam } from "../game/football/football.store";
@@ -44,15 +45,47 @@ function follow(controls: CameraControls, memory: Memory, me: Rt) {
 
 export function Director({ world, nav }: { world: World; nav: Nav | null }) {
   const controls = useRef<CameraControls>(null);
+  const canvas = useThree(three => three.gl.domElement);
   const size = useThree(three => three.size);
   const memory = useRef<Memory>({ shot: "", holdUntil: 0, nextAim: 0, pickedAt: 0, selected: null, walkingSince: 0 });
   useEffect(() => {
     const camera = controls.current!;
-    camera.smoothTime = .55;
+    const end = new Spherical();
     const hold = () => { memory.current.holdUntil = performance.now() + HOLD_AFTER_ORBIT; };
-    camera.addEventListener("controlstart", hold);
-    return () => camera.removeEventListener("controlstart", hold);
-  }, []);
+    // Native ctrl-wheel changes lens zoom instead of distance, bypassing the town's dolly limits.
+    camera.mouseButtons.wheel = CameraControlsImpl.ACTION.NONE;
+    const wheel = (event: WheelEvent) => {
+      if (!(camera.camera instanceof PerspectiveCamera)) return;
+      event.preventDefault();
+      hold();
+      const rect = canvas.getBoundingClientRect();
+      if (!rect.height) return;
+      const radius = camera.getSpherical(end, true).radius;
+      const span = 2 * Math.tan(camera.camera.getEffectiveFOV() * Math.PI / 360);
+      const unit = event.deltaMode === 1 ? 32 : event.deltaMode === 2 ? rect.height : 1;
+      const following = useOffice.getState().walking;
+      if (!event.ctrlKey && (event.shiftKey || Math.abs(event.deltaX) > Math.abs(event.deltaY))) {
+        if (!following) void camera.truck(event.deltaX * unit * radius * span / rect.height,
+          event.deltaY * unit * radius * span / rect.height, true);
+        return;
+      }
+      const factor = wheelZoomFactor(event.deltaY * unit, event.ctrlKey);
+      const next = Math.max(camera.minDistance, Math.min(camera.maxDistance, radius * factor));
+      if (!following) {
+        // Translate the target by the lost view span so the point under the cursor stays put.
+        const scale = (radius - next) * span / rect.height;
+        void camera.truck((event.clientX - rect.left - rect.width / 2) * scale,
+          (event.clientY - rect.top - rect.height / 2) * scale, true);
+      }
+      void camera.dollyTo(next, true);
+    };
+    canvas.addEventListener("wheel", wheel, { passive: false });
+    camera.addEventListener("control", hold);
+    return () => {
+      canvas.removeEventListener("wheel", wheel);
+      camera.removeEventListener("control", hold);
+    };
+  }, [canvas]);
   // A new layout or window size: frame again straight away.
   useEffect(() => { Object.assign(memory.current, { nextAim: 0, holdUntil: 0 }); }, [world, size.width, size.height]);
 
@@ -62,7 +95,7 @@ export function Director({ world, nav }: { world: World; nav: Nav | null }) {
     camera.getTarget(lookAt.target); lookAt.active = true;
     const me = state.walking ? nav?.playerRt : undefined;
     m.walkingSince = me ? m.walkingSince || now : 0;
-    camera.smoothTime = !me || ballCam.live ? .55 : now - m.walkingSince < FLY_DOWN ? 1.2 : .18; // then keep up with a sprint
+    camera.smoothTime = now < m.holdUntil ? .12 : !me || ballCam.live ? .55 : now - m.walkingSince < FLY_DOWN ? 1.2 : .18; // then keep up with a sprint
     if (me) return follow(camera, m, me);
 
     if (state.manualAt !== m.pickedAt || state.selected !== m.selected) Object.assign(m, { pickedAt: state.manualAt, selected: state.selected, holdUntil: 0, nextAim: 0 });
@@ -84,5 +117,6 @@ export function Director({ world, nav }: { world: World; nav: Nav | null }) {
     m.nextAim = Infinity; // a place stands still: aim once
     void camera.setLookAt(cx, frame.y, cz + frame.z, cx, 0, cz, true);
   });
-  return <CameraControls ref={controls} makeDefault maxPolarAngle={Math.PI * .46} minDistance={3} maxDistance={Math.max(world.w, world.d) * 12} />;
+  const overview = townFrame(world.w + 8, world.d + 8, size.width / Math.max(1, size.height));
+  return <CameraControls ref={controls} domElement={canvas} makeDefault dollyToCursor={!useOffice(state => state.walking)} maxPolarAngle={Math.PI * .46} minDistance={3} maxDistance={overview.distance * 1.25} />;
 }

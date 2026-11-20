@@ -17,3 +17,11 @@ test('portrait fit increases distance, including empty-town dimensions', () => {
   assert.ok(townFrame(24,24,.3).distance > townFrame(24,24,2).distance);
   assert.ok(Number.isFinite(townFrame(24,24,0).distance));
 });
+
+test('wheel steps accumulate smoothly, reverse exactly and cap large impulses', async () => {
+  const { wheelZoomFactor: factor } = await import('../lib/camera.ts');
+  assert.ok(factor(100, false) > 1.15 && factor(100, false) < 1.2);
+  assert.ok(Math.abs(factor(1, false) ** 100 - factor(100, false)) < 1e-12);
+  assert.ok(Math.abs(factor(4, true) * factor(-4, true) - 1) < 1e-12);
+  assert.equal(factor(4000, true), Math.exp(.24));
+});

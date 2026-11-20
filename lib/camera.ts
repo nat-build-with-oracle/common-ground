@@ -8,3 +8,8 @@ export function townFrame(width: number, depth: number, aspect: number, fov = 38
     * 1.12 + halfDepth * Math.cos(tilt);
   return { y: distance * Math.sin(tilt), z: distance * Math.cos(tilt), distance };
 }
+
+/** Continuous pixel deltas, with a cap for accelerated wheels and page-mode devices. */
+export function wheelZoomFactor(pixels: number, pinch: boolean) {
+  return Math.exp(Math.max(-.24, Math.min(.24, pixels * (pinch ? .01 : .0016))));
+}
