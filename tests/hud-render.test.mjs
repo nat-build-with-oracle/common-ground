@@ -37,7 +37,7 @@ registerHooks({
 const { default: Hud } = await import('../components/Hud.tsx');
 const { default: TownMap } = await import('../components/TownMap.tsx');
 const { loadTheme, residentFigureVisible, setScrollWheelMode, useOffice } = await import('../components/store.ts');
-const { stopWalking, toggleWalk, visitZone, walkAs } = await import('../components/hud/hud.shared.tsx');
+const { selectCitizen, stopWalking, toggleWalk, visitZone, walkAs } = await import('../components/hud/hud.shared.tsx');
 const { runAction } = await import('../components/palette/palette.run.ts');
 const { paletteItems } = await import('../components/palette/palette.items.ts');
 const { handleHudKey } = await import('../components/hud/hud.keys.ts');
@@ -95,6 +95,26 @@ test('palette walking actions are explicit and ignore the selected dossier', () 
   runAction(stop.action);
   assert.equal(useOffice.getState().walking, false);
   assert.equal(useOffice.getState().walkingAs, null);
+});
+
+test('in-page resident picks are remembered per id with a fresh signal for repeat picks', () => {
+  const bot = { id: 'oracle-a', name: 'oracle-a', status: 'idle', href: '' };
+  useOffice.setState({ ...initial, bots: [bot], pickedResidentIds: new Set() }, true);
+  selectCitizen(bot);
+  const first = useOffice.getState().pickedResidentIds;
+  assert.deepEqual([...first], [bot.id]);
+  selectCitizen(bot);
+  assert.notEqual(useOffice.getState().pickedResidentIds, first);
+
+  const other = { ...bot, id: 'oracle-b', name: 'oracle-b' };
+  useOffice.setState({ bots: [bot, other] });
+  runAction({ kind: 'follow', id: other.id });
+  assert.deepEqual([...useOffice.getState().pickedResidentIds], [bot.id, other.id]);
+
+  const beforeTerminalPick = useOffice.getState().pickedResidentIds;
+  runAction({ kind: 'terminal', id: other.id });
+  assert.notEqual(useOffice.getState().pickedResidentIds, beforeTerminalPick);
+  assert.equal(useOffice.getState().terminalInput, null, 'a palette terminal pick still opens read-only');
 });
 
 test('Enter targets the visible dossier and E targets the possessed pane', () => {
@@ -188,7 +208,19 @@ test('offline residents cannot be walked as', () => {
   const residents = render({ bots: [offline], hudPanel: 'residents' });
   assert.match(residents, /class="resident-walk" disabled="" aria-label="Walk as offline-oracle"/);
   assert.equal(paletteItems({ bots: [offline], zones: [], preview: false, walking: false, music: false }).find(item => item.action.kind === 'walkAs').disabled, true);
+
+  const live = { ...offline, id: 'live', name: 'live-oracle', status: 'idle' };
+  useOffice.setState({ ...initial, bots: [live, offline], walking: true, walkingAs: live.id, selected: offline.id }, true);
+  const hints = renderToStaticMarkup(React.createElement(Hud));
+  assert.match(hints, /<kbd>E<\/kbd> live-oracle terminal/);
+  assert.doesNotMatch(hints, /<kbd>Enter<\/kbd> offline-oracle terminal/);
+  assert.doesNotMatch(hints, /<kbd>H<\/kbd> walk as offline-oracle/);
+  assert.match(hints, /<kbd>H<\/kbd> stop/);
+  assert.match(hints, /<kbd>Esc<\/kbd> return to overview/);
+  toggleWalk();
+  assert.equal(useOffice.getState().walking, false);
 });
+
 test('football disables walk-as entry points and explains why', () => {
   const bot = { id: 'beta', name: 'beta-oracle', color: '#f09b82', title: 'Codex', sectionId: null, status: 'idle', working: false, seenAt: Date.now(), source: 'herdr', host: 'm5', runtime: 'codex', pane: '%12', project: 'common-ground', href: '' };
   useFootball.setState({ ...initialFootball, match: { ...initialFootball.match, phase: 'playing' } }, true);
@@ -272,6 +304,7 @@ test('session links survive a failed roster request, a fresh tab and terminal hi
     useOffice.setState({ preview: true, updatedAt: 1, loading: false, bots: [{ id: 'herdr:A', status: 'idle' }, { id: 'herdr:B', status: 'idle' }] });
     assert.equal(location.href, initialUrl);
     assert.deepEqual(identities(), [null, null, null]);
+    assert.equal(useOffice.getState().pendingWalkId, 'herdr:A');
     // A timestamped response whose requested source failed is still not a roster for that source.
     useOffice.setState({ preview: false, updatedAt: 2, sources: [{ id: 'herdr', status: 'error' }], error: 'Temporary network failure' });
     assert.equal(location.href, initialUrl);
@@ -279,6 +312,7 @@ test('session links survive a failed roster request, a fresh tab and terminal hi
     useOffice.setState({ ...roster, error: '' });
     assert.deepEqual(identities(), ['herdr:B', 'herdr:A', null]);
     handleHudKey({ key: 'e', target: null, preventDefault() {} });
+    assert.equal(useOffice.getState().terminalInput, null, 'the restored walk opens read-only');
     assert.equal(location.searchParams.get('t'), '1');
     assert.equal(index, 1);
     stop();
@@ -306,6 +340,28 @@ test('session links survive a failed roster request, a fresh tab and terminal hi
     assert.equal(useOffice.getState().terminalInput, null);
     assert.equal(useOffice.getState().terminalFull, null);
     assert.equal(location.pathname, '/s/maw%3AA');
+
+    assert.equal(useOffice.getState().pendingWalkId, 'maw:A');
+    walkAs('herdr:B');
+    assert.equal(useOffice.getState().pendingWalkId, null);
+    assert.equal(location.searchParams.get('as'), 'herdr:B');
+    useOffice.setState({ sources: [...roster.sources, { id: 'maw', status: 'connected' }], bots: [...roster.bots, { id: 'maw:A', status: 'idle' }] });
+    assert.deepEqual(identities(), [null, 'herdr:B', null]);
+
+    for (const reason of ['missing', 'offline']) {
+      stop();
+      location = new URL('https://town.test/?walk=1&as=A');
+      const bots = reason === 'offline' ? [{ id: 'A', name: 'A', status: 'offline' }] : [];
+      useOffice.setState({ ...initial, ...roster, preview: reason === 'missing', bots }, true);
+      stop = followSessionUrl();
+      assert.deepEqual(useOffice.getState().sessionNotice, { target: 'walk', id: 'A', reason });
+      assert.equal(useOffice.getState().walking, false);
+      assert.equal(location.search, '');
+      const { Overlays } = await import('../components/hud/hud.overlays.tsx');
+      const markup = renderToStaticMarkup(React.createElement(Overlays));
+      assert.match(markup, reason === 'offline' ? /A is offline/ : /A wasn&#x27;t found/);
+      assert.match(markup, />Walk as yourself<\/button>/);
+    }
   } finally {
     stop?.();
     useOffice.setState(initial, true);
@@ -395,11 +451,30 @@ test('terminal views remain read-only until the resident is explicitly authorize
   assert.equal(useOffice.getState().terminalInput, null);
 });
 
-test('only E and Enter on the visible dossier authorize keyboard input', () => {
-  useOffice.setState({ ...initial, bots: [live], walking: true, walkingAs: live.id, selected: null }, true);
+test('URL-picked residents stay read-only until the visitor explicitly enables input', () => {
+  const other = { id: 'other-live', name: 'Other Live Oracle', status: 'idle' };
+  useOffice.setState({ ...initial, bots: [live, other], walking: true, walkingAs: live.id, selected: null, pickedResidentIds: new Set() }, true);
+  selectCitizen(other);
+  press('e');
+  assert.equal(useOffice.getState().terminalFull, live.id);
+  assert.equal(useOffice.getState().terminalInput, null, 'picking B does not authorize URL-picked A');
+
+  closeTerminal();
+  useOffice.setState({ selected: live.id, hudPanel: null });
   press('Enter');
   assert.equal(useOffice.getState().terminalFull, live.id);
-  assert.equal(useOffice.getState().terminalInput, null, 'fallback Enter has no visible dossier');
+  assert.equal(useOffice.getState().terminalInput, null, 'Enter opens a URL-picked dossier read-only');
+
+  assert.equal(enableTerminalInput(live.id), true);
+  assert.equal(useOffice.getState().terminalInput, live.id, 'the explicit Type into button still grants input');
+});
+
+test('E and Enter authorize residents the visitor picked in the page', () => {
+  useOffice.setState({ ...initial, bots: [live], walking: true, walkingAs: live.id, selected: null, pickedResidentIds: new Set() }, true);
+  selectCitizen(live);
+  press('Enter');
+  assert.equal(useOffice.getState().terminalFull, live.id);
+  assert.equal(useOffice.getState().terminalInput, live.id, 'Enter authorizes the dossier selected in-page');
 
   closeTerminal();
   useOffice.setState({ selected: live.id, hudPanel: 'residents' });

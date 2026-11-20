@@ -30,9 +30,11 @@ export function resolveSession(id: string, bots: readonly OracleBot[]): SessionL
   return bot.status === "offline" ? { kind: "offline", bot } : { kind: "live", bot };
 }
 
+export type SessionNotice = { id: string; reason: "offline" | "missing"; target: "walk" | "dossier" };
+
 export type RestoredSession = {
   selected: string | null;
-  notice: { id: string; reason: "offline" | "missing" } | null;
+  notice: SessionNotice | null;
   walking: boolean;
   walkingAs: string | null;
   terminalFull: string | null;
@@ -43,18 +45,24 @@ export function restoreSession(pathname: string, search: string, bots: readonly 
   const route = parseSessionPath(pathname);
   const selectedLookup = route.kind === "id" ? resolveSession(route.id, bots) : null;
   const selected = selectedLookup?.kind === "live" ? selectedLookup.bot.id : null;
-  const notice = route.kind === "none" ? null : {
+  let notice: SessionNotice | null = selected || route.kind === "none" ? null : {
+    target: "dossier",
     id: route.kind === "id" ? route.id : "",
-    reason: selectedLookup?.kind === "offline" ? "offline" as const : "missing" as const,
+    reason: selectedLookup?.kind === "offline" ? "offline" : "missing",
   };
   const params = new URLSearchParams(search);
-  const walking = params.get("walk") === "1";
+  let walking = params.get("walk") === "1";
   const requestedResident = walking ? params.get("as") : null;
-  const walkingAs = requestedResident && resolveSession(requestedResident, bots).kind === "live" ? requestedResident : null;
+  const resident = requestedResident ? resolveSession(requestedResident, bots) : null;
+  const walkingAs = resident?.kind === "live" ? resident.bot.id : null;
+  if (requestedResident && resident && resident.kind !== "live") {
+    notice = { target: "walk", id: requestedResident, reason: resident.kind };
+    walking = false;
+  }
   const terminalFull = params.get("t") === "1"
     ? params.get("terminal") === "as" ? walkingAs : route.kind === "none" ? walkingAs : selected
     : null;
-  return { selected, notice: selected ? null : notice, walking, walkingAs, terminalFull };
+  return { selected, notice, walking, walkingAs, terminalFull };
 }
 
 /** Flags in the query survive reloads: `t=1` keeps the full-screen terminal open, `walk=1` keeps you walking. */

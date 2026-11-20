@@ -17,7 +17,8 @@ export function handleHudKey(event: KeyboardEvent) {
     if (target && !state.preview && !(action === "interact" && matchActive())) {
       event.preventDefault();
       const visibleDossier = state.selected === target && !state.hudPanel && !state.atlasOpen;
-      openTerminal(target, { select: false, input: action === "interact" || visibleDossier });
+      const pickedInPage = state.pickedResidentIds.has(target);
+      openTerminal(target, { select: false, input: pickedInPage && (action === "interact" || visibleDossier) });
     }
     return;
   }

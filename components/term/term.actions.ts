@@ -5,7 +5,11 @@ export function openTerminal(id: string, { select = true, input = false } = {}) 
   const state = useOffice.getState();
   const live = state.bots.some(bot => bot.id === id && bot.status !== "offline");
   if (state.preview || !live) return false;
-  setOffice({ terminalFull: id, terminalInput: input ? id : null, ...(select ? { selected: id } : {}) });
+  setOffice({
+    terminalFull: id,
+    terminalInput: input ? id : null,
+    ...(select ? { selected: id, pickedResidentIds: new Set(state.pickedResidentIds).add(id) } : {}),
+  });
   return true;
 }
 

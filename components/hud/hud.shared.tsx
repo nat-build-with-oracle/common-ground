@@ -15,7 +15,11 @@ export function ago(at: number) {
 }
 export function safeHref(value: string) { try { const url = new URL(value); return /^(https?:)$/.test(url.protocol) ? url.href : null; } catch { return null; } }
 export function StatusDot({ status }: { status: OracleStatus }) { return <span className={`status-dot status-${status}`} aria-hidden="true" />; }
-export function selectCitizen(bot: OracleBot) { setOffice({ selected: bot.id, manual: null, hudPanel: null }); sfx("pop"); }
+export function selectCitizen(bot: OracleBot) {
+  const pickedResidentIds = new Set(useOffice.getState().pickedResidentIds).add(bot.id);
+  setOffice({ selected: bot.id, manual: null, hudPanel: null, pickedResidentIds });
+  sfx("pop");
+}
 export function openBook(panel: HudPanel, filter: ResidentFilter = "all") { setOffice({ hudPanel: panel, residentFilter: filter, selected: null }); }
 export function closeBook() {
   const panel = useOffice.getState().hudPanel;
@@ -29,10 +33,14 @@ export function visitZone(id?: string) {
   if (walking && !id) { setOffice({ walking: false, walkingAs: null, selected: null, hudPanel: null, manual: { kind: "overview" }, manualAt: Date.now() }); return; }
   setOffice({ hudPanel: null, selected: null, manual: id ? { kind: "zone", id } : { kind: "overview" }, manualAt: Date.now(), ...(walking && id ? { travel: id } : {}) });
 }
-export function walkAs(id: string) {
-  const resident = useOffice.getState().bots.find(bot => bot.id === id);
+export function walkAs(id: string, pickedInPage = true) {
+  const state = useOffice.getState();
+  const resident = state.bots.find(bot => bot.id === id);
   if (matchActive() || !resident || resident.status === "offline") return;
-  setOffice({ walking: true, walkingAs: id, selected: null, hudPanel: null, atlasOpen: false, manual: null, manualAt: Date.now() });
+  setOffice({
+    walking: true, walkingAs: id, selected: null, hudPanel: null, atlasOpen: false, manual: null, manualAt: Date.now(),
+    ...(pickedInPage ? { pickedResidentIds: new Set(state.pickedResidentIds).add(id) } : {}),
+  });
   sfx("pop");
 }
 export function walkAsYourself() {
@@ -46,7 +54,12 @@ export function stopWalking() {
 }
 export function toggleWalk() {
   const state = useOffice.getState();
-  if (state.selected && (!state.walking || state.walkingAs !== state.selected)) return walkAs(state.selected);
+  if (state.selected && (!state.walking || state.walkingAs !== state.selected)) {
+    const selected = state.bots.find(bot => bot.id === state.selected);
+    if (selected && selected.status !== "offline") return walkAs(selected.id, state.pickedResidentIds.has(selected.id));
+    if (state.walking) return stopWalking();
+    return;
+  }
   if (state.walking) return stopWalking();
   walkAsYourself();
 }

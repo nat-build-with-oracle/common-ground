@@ -24,10 +24,7 @@ export function requestedSessionIds(pathname: string, search: string) {
 function requestedSourcesReady(state: ReturnType<typeof useOffice.getState>) {
   const { pathname, search } = window.location;
   const requestedIds = requestedSessionIds(pathname, search);
-  if (state.preview) {
-    if (new URLSearchParams(search).has("host") && requestedIds.length) return false;
-    return requestedIds.every(id => state.bots.some(bot => bot.id === id && bot.status !== "offline"));
-  }
+  if (state.preview) return !requestedIds.length || !new URLSearchParams(search).has("host");
   return requestedIds.every(id => {
     const source = id.split(":", 1)[0];
     const report = state.sources.find(candidate => candidate.id === source);
@@ -44,7 +41,7 @@ function show(delayHuman = false) {
   const football = matchActive();
   const walkingAs = football ? null : restored.walkingAs;
   setOffice({
-    selected: restored.selected, sessionNotice: restored.notice,
+    selected: restored.selected, sessionNotice: restored.notice, pendingWalkId: null,
     terminalFull: state.preview || (restored.terminalFull === restored.walkingAs && !walkingAs) ? null : restored.terminalFull,
     terminalInput: null,
     walking: football ? state.walking : restored.walking && (!!walkingAs || !delayHuman), walkingAs,
@@ -73,20 +70,29 @@ export function startWalking(delayMs = 3000, preserveSelection = false) {
 
 export function followSessionUrl() {
   let ready = false;
+  let picks = useOffice.getState().pickedResidentIds;
   const sync = () => {
     const state = useOffice.getState();
+    const picked = picks !== state.pickedResidentIds;
+    picks = state.pickedResidentIds;
+    if (picked) ready = true;
     if (!ready) {
       // A failed request cannot prove that a URL resident is absent. Wait for a successful roster response.
-      if (!state.updatedAt || !requestedSourcesReady(state)) return;
+      if (!state.updatedAt || !requestedSourcesReady(state)) {
+        const params = new URLSearchParams(window.location.search);
+        const pendingWalkId = params.get("walk") === "1" ? params.get("as") : null;
+        if (pendingWalkId !== state.pendingWalkId) setOffice({ pendingWalkId });
+        return;
+      }
       ready = true;
       return show(true);
     }
-    const path = state.selected ? sessionPath(state.selected) : state.sessionNotice ? window.location.pathname : "/";
+    const path = state.selected ? sessionPath(state.selected) : state.sessionNotice?.target === "dossier" ? window.location.pathname : "/";
     const terminalOpen = !!state.terminalFull && (state.terminalFull === state.selected || state.terminalFull === state.walkingAs);
     const possessedPane = path !== "/" && state.terminalFull === state.walkingAs && state.walkingAs !== state.selected;
     const search = withTerminal(window.location.search, terminalOpen, possessedPane);
     const walk = withWalking(search, state.walking, state.walkingAs);
-    if (state.selected && state.sessionNotice) return setOffice({ sessionNotice: null });
+    if (picked && (state.sessionNotice || state.pendingWalkId)) return setOffice({ sessionNotice: null, pendingWalkId: null });
     // Places and terminals are history steps (back/forward); walking only rewrites the address.
     if (window.location.pathname + withWalking(window.location.search, false, null) !== path + withWalking(search, false, null)) window.history.pushState(null, "", path + walk);
     else if (window.location.pathname + window.location.search !== path + walk) window.history.replaceState(null, "", path + walk);

@@ -13,7 +13,9 @@ const SERVE = `maw herdr serve --token-file ~/.maw-herdr-token --listen 127.0.0.
 
 export default function SourceGate() {
   const auth = useOffice(s => s.hostAuth), preview = useOffice(s => s.preview), loading = useOffice(s => s.loading);
+  const bots = useOffice(s => s.bots), pendingWalkId = useOffice(s => s.pendingWalkId);
   const choice = hostChoice(), connected = choice.kind === "host" && auth === "ok" && !preview;
+  const pendingWalk = choice.kind === "host" && pendingWalkId ? bots.find(bot => bot.id === pendingWalkId)?.name ?? pendingWalkId : null;
   const [open, setOpen] = useState(true), [hostValue, setHostValue] = useState("http://127.0.0.1:3457"), [token, setToken] = useState("");
 
   // No host, no token, or a refused token: fall back to the walkable mockup instead of a blocking screen.
@@ -22,8 +24,9 @@ export default function SourceGate() {
     const ready = choice.kind === "host" && !!hostToken(choice.origin);
     // With a saved token, keep polling through transient roster failures. A refusal clears the token.
     if (!ready) {
+      const requested = requestedSessionIds(window.location.pathname, window.location.search);
       setPreview(true);
-      if (!requestedSessionIds(window.location.pathname, window.location.search).length) startWalking();
+      if (!requested.length) startWalking();
     }
   }, [auth, preview, loading]); // eslint-disable-line react-hooks/exhaustive-deps
   // A refused token brings the card back open, with the reason in its header.
@@ -43,7 +46,7 @@ export default function SourceGate() {
       <span>🏘️ Mockup town</span><b>{auth === "rejected" ? "Token refused · try again" : choice.kind === "host" ? `Connect ${choice.origin.replace(/^https?:\/\//, "")}` : "Connect your fleet"}</b><span aria-hidden="true">{open ? "−" : "+"}</span>
     </button>
     {open && <div className="gate-body">
-      <p>You are walking a synthetic town (<kbd>H</kbd> to walk, <kbd>⌘K</kbd> for everything). To see your real agents, your browser reads <b>your own</b> maw herdr serve; nothing passes through this site.</p>
+      <p>{pendingWalk ? <>Connecting your fleet will resume walking as <b>{pendingWalk}</b>. </> : <>You are walking a synthetic town (<kbd>H</kbd> to walk, <kbd>⌘K</kbd> for everything). </>}To see your real agents, your browser reads <b>your own</b> maw herdr serve; nothing passes through this site.</p>
       <ol>
         {!(choice.kind === "host" && !LOOPBACK.test(choice.origin)) && <li>Start herdr serve and allow this site:<code>{SERVE}</code></li>}
         {choice.kind !== "host" ? <li>Open this page with your host:

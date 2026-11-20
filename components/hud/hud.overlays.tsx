@@ -4,7 +4,7 @@ import { botById, setOffice, useOffice } from "../store";
 import { Icon } from "../Icons";
 import { useFootball } from "../game/football/football.store";
 import { STATUS_LABEL } from "@/lib/hud";
-import { StatusDot } from "./hud.shared";
+import { StatusDot, walkAsYourself } from "./hud.shared";
 
 export function Overlays() {
   const error = useOffice(s => s.error), preview = useOffice(s => s.preview);
@@ -12,10 +12,15 @@ export function Overlays() {
   const selectedBot = useOffice(s => s.bots.find(bot => bot.id === s.selected));
   const match = useFootball(s => s.match.phase !== "idle");
   const caption = useOffice(s => s.caption), captionBot = caption ? botById(caption.botId) : null, notice = useOffice(s => s.sessionNotice);
-  const switchingBot = selectedBot?.id !== walkingBot?.id ? selectedBot : undefined;
+  const differentBot = selectedBot?.id !== walkingBot?.id ? selectedBot : undefined;
+  const switchingBot = differentBot?.status !== "offline" ? differentBot : undefined;
   return <>
     {error && <div role="alert" className="office-error">{error}</div>}
-    {notice && <div role="status" className="office-error session-notice">{notice.reason === "offline" ? "This session is offline right now." : "Session not found — it is not in the connected town."} <button className="text-button" onClick={() => { setOffice({ sessionNotice: null }); window.history.pushState(null, "", "/" + window.location.search); }}>Back to the town</button></div>}
+    {notice && <div role="status" className="office-error session-notice">{notice.target === "walk" ? <>
+      {botById(notice.id)?.name || notice.id}{notice.reason === "offline" ? " is offline" : " wasn't found"}. <button className="text-button" disabled={match} onClick={() => { setOffice({ sessionNotice: null }); walkAsYourself(); }}>Walk as yourself</button>
+    </> : <>
+      {notice.reason === "offline" ? "This session is offline right now." : "Session not found — it is not in the connected town."} <button className="text-button" onClick={() => setOffice({ sessionNotice: null })}>Back to the town</button>
+    </>}</div>}
     {preview && <div className="preview-ribbon">SYNTHETIC TOWN · no live status or captures</div>}
     {walking && walkingBot && <div className="walking-as-chip" role="status"><StatusDot status={walkingBot.status} /> Walking as <b>{walkingBot.name}</b> · {STATUS_LABEL[walkingBot.status]} · <kbd>Esc</kbd> return to overview</div>}
     {caption && captionBot && <div className="caption"><b>{captionBot.name}</b><span>{caption.text}</span></div>}
@@ -24,6 +29,8 @@ export function Overlays() {
       {walkingBot && !preview
         ? switchingBot
           ? <><kbd>E</kbd> {walkingBot.name} terminal · <kbd>Enter</kbd> {switchingBot.name} terminal</>
+          : differentBot
+            ? <><kbd>E</kbd> {walkingBot.name} terminal</>
           : <><kbd>E</kbd> / <kbd>Enter</kbd> terminal</>
         : <><kbd>E</kbd> say hi</>} ·
       <kbd>F</kbd> throw a ball ·

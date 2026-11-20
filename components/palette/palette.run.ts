@@ -12,7 +12,7 @@ export function runAction(action: PaletteAction) {
   const state = useOffice.getState();
   setOffice({ paletteOpen: false });
   switch (action.kind) {
-    case "follow": setOffice({ selected: action.id, manual: null, hudPanel: null, walking: false, walkingAs: null }); break;
+    case "follow": setOffice({ selected: action.id, manual: null, hudPanel: null, walking: false, walkingAs: null, pickedResidentIds: new Set(state.pickedResidentIds).add(action.id) }); break;
     case "walkAs": walkAs(action.id); break;
     case "terminal": openTerminal(action.id); break;
     case "visit": visitZone(action.zone); break;

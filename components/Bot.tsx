@@ -11,6 +11,7 @@ import type { TerminalSnapshot } from "@/lib/terminal-types";
 import type { Rt } from "./crowd";
 import { setOffice, useOffice } from "./store";
 import Citizen from "./Citizen";
+import { selectCitizen } from "./hud/hud.shared";
 import { openTerminal } from "./term/term.actions";
 
 /** What a citizen is doing, in words: observed status first, then the simulated daily life. */
@@ -74,7 +75,7 @@ export const Bot = memo(function Bot({ bot, rt, hit, now, focused, selected, hov
       <CapsuleCollider args={[.4, .33]} position={[0, .73, 0]} />
     </RigidBody>
     <group ref={root} position={start}
-      onClick={event => { event.stopPropagation(); setOffice({ selected: bot.id, manual: null, hudPanel: null }); }}
+      onClick={event => { event.stopPropagation(); selectCitizen(bot); }}
       onPointerOver={event => { event.stopPropagation(); setOffice({ hovered: bot.id }); document.body.style.cursor = "pointer"; }}
       onPointerOut={() => { setOffice(state => state.hovered === bot.id ? { hovered: null } : {}); document.body.style.cursor = ""; }}>
       <Suspense fallback={<mesh position-y={.7}><capsuleGeometry args={[.25, .8, 4, 6]} /><meshStandardMaterial color={bot.color} /></mesh>}>
