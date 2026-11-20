@@ -96,7 +96,7 @@ own server directly; nothing passes through town.buildwithoracle.com:
 
 2. Enter your host in the card, for example `http://127.0.0.1:3457`, and press **Open**. The page reloads
    as `https://town.buildwithoracle.com/?host=http://127.0.0.1:3457`.
-3. Paste your token when asked. It is kept for this browser tab only (sessionStorage). With a token, the
+3. Paste your token when asked. It is remembered in this browser (localStorage) for that host, so you paste it once. With a token, the
    full-screen terminal accepts typing; without one, the town is read-only.
 
 An allowed origin can read every pane that server sees. Only allow sites you trust.
