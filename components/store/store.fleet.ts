@@ -9,6 +9,10 @@ import { setOffice, useOffice } from "./store.state";
 let controller: AbortController | undefined;
 let generation = 0;
 
+/** Keep identity-bearing state only while its resident belongs to the live roster. */
+const retainLiveResident = (id: string | null, bots: FleetSnapshot["bots"]) =>
+  bots.some(bot => bot.id === id && bot.status !== "offline") ? id : null;
+
 export async function refreshFleet() {
   if (useOffice.getState().preview) return;
   controller?.abort();
@@ -33,7 +37,10 @@ export async function refreshFleet() {
       hostAuth: "ok", ...snapshot, bots, sections, nodes: Array.isArray(snapshot.nodes) ? snapshot.nodes : [], loading: false, error: "", connected: snapshot.sources.some(s => s.status === "connected"),
       feed: [...changes, ...previous.feed].slice(0, 60),
       live: { ...previous.live, ...Object.fromEntries(changes.map(a => [a.botId, a])) },
+      walkingAs: retainLiveResident(previous.walkingAs, bots),
       selected: bots.some(bot => bot.id === previous.selected) ? previous.selected : null,
+      terminalFull: retainLiveResident(previous.terminalFull, bots),
+      terminalInput: retainLiveResident(previous.terminalInput, bots),
     });
     announce(changes);
   } catch (error) {
@@ -43,17 +50,18 @@ export async function refreshFleet() {
       loading: false, connected: false, error: error instanceof Error ? error.message : "Could not reach the office server",
       bots: state.bots.map(bot => ({ ...bot, status: "offline", working: false })),
       sources: state.sources.map(source => ({ ...source, status: "offline", error: "Office connection lost" })),
+      walkingAs: null, terminalFull: null, terminalInput: null,
     }));
   }
 }
 
 export function setPreview(enabled: boolean) {
   ++generation; controller?.abort();
-  setOffice({ terminals: {} });
+  setOffice({ terminals: {}, terminalFull: null, terminalInput: null });
   if (enabled) {
-    setOffice({ ...previewFleet(), preview: true, loading: false, connected: false, error: "", selected: null, live: {}, feed: [], manual: { kind: "overview" }, manualAt: Date.now() });
+    setOffice({ ...previewFleet(), preview: true, walkingAs: null, loading: false, connected: false, error: "", selected: null, live: {}, feed: [], manual: { kind: "overview" }, manualAt: Date.now() });
   } else {
-    setOffice({ bots: [], groups: [], sections: [], sources: [], nodes: [], updatedAt: 0, preview: false, selected: null, feed: [], live: {}, loading: true });
+    setOffice({ bots: [], groups: [], sections: [], sources: [], nodes: [], updatedAt: 0, preview: false, walkingAs: null, selected: null, feed: [], live: {}, loading: true });
     void refreshFleet();
   }
 }

@@ -5,25 +5,36 @@ import { hudShortcut } from "@/lib/hud";
 import { setOffice, useOffice } from "../store";
 import { endFootball, matchActive, startFootball } from "../game/football/football.store";
 import { toggleMusic } from "../music/music";
-import { closeBook, openBook, toggleWalk } from "./hud.shared";
+import { closeBook, openBook, stopWalking, toggleWalk } from "./hud.shared";
+import { openTerminal } from "../term/term.actions";
+
+export function handleHudKey(event: KeyboardEvent) {
+  const state = useOffice.getState();
+  if (event.defaultPrevented || state.paletteOpen || state.terminalFull) return; // their own keyboard
+  const action = hudShortcut({ key: event.key, ctrlKey: event.ctrlKey, metaKey: event.metaKey, altKey: event.altKey, shiftKey: event.shiftKey, repeat: event.repeat, target: event.target && event.target instanceof HTMLElement ? event.target : null });
+  if (action === "open-terminal" || action === "interact") {
+    const target = action === "open-terminal" ? state.selected ?? state.walkingAs : state.walkingAs;
+    if (target && !state.preview && !(action === "interact" && matchActive())) {
+      event.preventDefault();
+      const visibleDossier = state.selected === target && !state.hudPanel && !state.atlasOpen;
+      const pickedInPage = state.pickedResidentIds.has(target);
+      openTerminal(target, { select: false, input: pickedInPage && (action === "interact" || visibleDossier) });
+    }
+    return;
+  }
+  if (!action || action.startsWith("district:")) return;
+  event.preventDefault();
+  if (action === "close") { if (state.walkingAs) stopWalking(); else closeBook(); setOffice({ atlasOpen: false, throwMode: false }); }
+  if (action === "residents" || action === "journal" || action === "cabinet") state.hudPanel === action ? closeBook() : openBook(action);
+  if (action === "map") setOffice({ atlasOpen: !state.atlasOpen, ...(!state.atlasOpen ? { hudPanel: null, selected: null } : {}) });
+  if (action === "terminal" && !state.preview) setOffice({ terminalEnabled: !state.terminalEnabled });
+  if (action === "walk") toggleWalk();
+  if (action === "music") toggleMusic();
+  if (action === "football") { if (matchActive()) endFootball(); else if (state.bots.length) startFootball(); }
+}
 
 export function useHudKeys() {
   useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      const state = useOffice.getState();
-      if (state.paletteOpen || state.terminalFull) return; // their own keyboard
-      const action = hudShortcut({ key: event.key, ctrlKey: event.ctrlKey, metaKey: event.metaKey, altKey: event.altKey, shiftKey: event.shiftKey, repeat: event.repeat, target: event.target instanceof HTMLElement ? event.target : null });
-      if (!action && event.key === "Enter" && state.selected && !(event.target instanceof HTMLButtonElement) && !state.preview) { event.preventDefault(); setOffice({ terminalFull: state.selected }); return; }
-      if (!action || action.startsWith("district:")) return;
-      event.preventDefault();
-      if (action === "close") { closeBook(); setOffice({ atlasOpen: false, throwMode: false }); }
-      if (action === "residents" || action === "journal" || action === "cabinet") state.hudPanel === action ? closeBook() : openBook(action);
-      if (action === "map") setOffice({ atlasOpen: !state.atlasOpen, ...(!state.atlasOpen ? { hudPanel: null, selected: null } : {}) });
-      if (action === "terminal" && !state.preview) setOffice({ terminalEnabled: !state.terminalEnabled });
-      if (action === "walk") toggleWalk();
-      if (action === "music") toggleMusic();
-      if (action === "football") { if (matchActive()) endFootball(); else if (state.bots.length) startFootball(); }
-    };
-    window.addEventListener("keydown", onKey); return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener("keydown", handleHudKey); return () => window.removeEventListener("keydown", handleHudKey);
   }, []);
 }

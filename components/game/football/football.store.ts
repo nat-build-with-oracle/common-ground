@@ -17,7 +17,7 @@ export function startFootball() {
   const { bots } = useOffice.getState();
   setFootball({ match: startMatch(), roster: pickTeams(bots), charge: 0, hint: "" });
   // Watch only: you stand in the match, so walk mode is on and the camera goes to the ball.
-  setOffice({ walking: true, selected: null, hudPanel: null, atlasOpen: false, manual: null, manualAt: Date.now(), throwMode: false });
+  setOffice({ walking: true, walkingAs: null, selected: null, hudPanel: null, atlasOpen: false, manual: null, manualAt: Date.now(), throwMode: false });
 }
 export function endFootball() {
   if (!matchActive()) return;

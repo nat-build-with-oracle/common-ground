@@ -5,7 +5,7 @@ import { useFrame } from "@react-three/fiber";
 import { useEffect, useRef, useState } from "react";
 import { Bot } from "../Bot";
 import type { Nav } from "../crowd";
-import { useOffice } from "../store";
+import { residentFigureVisible, useOffice } from "../store";
 import type { World } from "../world";
 
 const THINK_EVERY = .4; // seconds between goal decisions
@@ -22,6 +22,7 @@ function useSeconds() {
 
 export function Citizens({ world, nav }: { world: World; nav: Nav | null }) {
   const bots = useOffice(state => state.bots), hits = useOffice(state => state.hits);
+  const walkingAs = useOffice(state => state.walkingAs);
   const focus = useOffice(state => state.focus), selected = useOffice(state => state.selected), hovered = useOffice(state => state.hovered);
   const now = useSeconds(), sinceThought = useRef(0);
   useFrame((_, dt) => {
@@ -34,7 +35,7 @@ export function Citizens({ world, nav }: { world: World; nav: Nav | null }) {
     }
     nav.update(dt);
   });
-  return bots.filter(bot => world.seats.has(bot.id)).map(bot => (
+  return bots.filter(bot => world.seats.has(bot.id) && residentFigureVisible(bot.id, walkingAs)).map(bot => (
     <Bot key={bot.id} bot={bot} rt={nav?.rts.get(bot.id)} hit={hits[bot.id]} now={now}
       focused={bot.id === focus} selected={bot.id === selected} hovered={bot.id === hovered} />
   ));

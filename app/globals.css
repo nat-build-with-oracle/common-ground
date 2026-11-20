@@ -94,7 +94,10 @@ kbd { font: 10px/1.4 var(--mono); padding: 1px 4px; border: 1px solid var(--line
 .resident-filters button[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
 .list-count { display: flex; justify-content: space-between; gap: 8px; padding: 4px 0 10px; font: 10px var(--mono); color: var(--muted); border-bottom: 1px solid var(--line); }
 .list-count > span { font: 10px system-ui; }
-.resident-row { display: grid; grid-template-columns: 35px minmax(0, 1fr) 14px; gap: 10px; align-items: center; width: 100%; padding: 12px 0; background: none; text-align: left; border-bottom: 1px solid var(--line); }
+.resident-row { display: grid; grid-template-columns: minmax(0, 1fr) 34px; gap: 7px; align-items: center; width: 100%; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.resident-profile { display: grid; grid-template-columns: 35px minmax(0, 1fr); gap: 10px; align-items: center; min-width: 0; padding: 4px 0; background: none; text-align: left; }
+.resident-walk { display: grid; place-items: center; width: 32px; height: 32px; border: 1px solid var(--line); border-radius: 50%; background: none; color: var(--coral); }
+.resident-walk:hover { background: var(--ink); color: var(--paper); }
 .resident-monogram { display: grid; place-items: center; width: 35px; height: 40px; color: var(--ink); border-radius: 7px 7px 14px 14px; background: var(--resident-color, #aed0bd); border: 1px solid #223d4b38; font: 22px var(--serif); }
 .resident-copy { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 .resident-copy strong, .resident-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -157,6 +160,8 @@ kbd { font: 10px/1.4 var(--mono); padding: 1px 4px; border: 1px solid var(--line
 .life-postcard p { margin: 0 0 12px; font-size: 12px; overflow-wrap: anywhere; }
 .life-postcard small { color: var(--muted); font-size: 10px; line-height: 1.6; display: block; }
 .dossier-terminal { margin: 18px 0; }
+.walk-as-button { margin-top: 18px; }
+.walk-as-button kbd { margin-left: auto; border: 0; color: inherit; }
 .dossier-terminal p, .capture-stamp { font-size: 11px; color: var(--muted); }
 .dossier-terminal pre { margin: 8px 0; padding: 10px; max-height: 175px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; border-radius: 6px; background: var(--ink); color: #f1f3e8; font: 10px/1.5 var(--mono); }
 
@@ -198,6 +203,11 @@ kbd { font: 10px/1.4 var(--mono); padding: 1px 4px; border: 1px solid var(--line
 .preview-ribbon { position: absolute; top: 325px; left: 24px; max-width: 255px; color: var(--coral); padding: 6px 10px; background: var(--paper); border: 1px dashed var(--coral); font: 9px/1.5 var(--mono); }
 .caption { position: absolute; bottom: 212px; left: 50%; display: flex; flex-direction: column; gap: 4px; transform: translateX(-50%); max-width: min(450px, 85vw); padding: 10px 14px; border-radius: 9px; background: var(--paper); box-shadow: 0 4px 20px #223d4b22; font-size: 12px; }
 .scene-hint { position: absolute; top: 150px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 7px; padding: 8px 12px; background: var(--paper); border-radius: 6px; font-size: 11px; }
+.walk-hint { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: center; }
+.walk-hint kbd { font: 600 10px var(--mono, ui-monospace); padding: 1px 5px; border-radius: 4px; background: rgb(255 255 255 / .18); }
+.walk-hint b { flex-basis: 100%; text-align: center; font-weight: 500; color: #ffd58a; }
+.walking-as-chip { position: absolute; top: 116px; left: 50%; z-index: 5; transform: translateX(-50%); display: flex; align-items: center; gap: 5px; width: max-content; max-width: 90vw; padding: 6px 10px; border: 1px solid rgb(255 255 255 / .22); border-radius: 999px; background: rgb(34 61 75 / .94); color: #fffaf0; box-shadow: 0 4px 16px rgb(20 35 43 / .18); font-size: 10px; }
+.walking-as-chip kbd { padding: 1px 4px; border-color: rgb(255 255 255 / .25); color: inherit; }
 
 /* Existing Three.js HTML annotations retain their bounded sizing. */
 /* Floating label over a citizen: what they are doing, then their name. It grows a little while you look at them. */
@@ -277,6 +287,8 @@ kbd { font: 10px/1.4 var(--mono); padding: 1px 4px; border: 1px solid var(--line
   .preview-ribbon { display: none; }
   .caption { bottom: 223px; font-size: 10px; }
   .scene-hint { top: 276px; font-size: 10px; z-index: 4; width: max-content; max-width: 90vw; }
+  .walking-as-chip { top: 265px; }
+  .walking-as-chip ~ .walk-hint { top: 307px; }
   .terminal-cloud { width: min(290px, 75vw); }
   .terminal-cloud pre { font-size: 9px; max-height: 95px; }
   .terminal-cloud.compact { display: none; }
@@ -330,9 +342,6 @@ kbd { font: 10px/1.4 var(--mono); padding: 1px 4px; border: 1px solid var(--line
 .node-list li i { width: 8px; height: 8px; border-radius: 50%; background: #2f9e6a; }
 .node-list li.down i { background: #b8443a; }
 .node-list li span { color: var(--muted); font-size: 10.5px; }
-.walk-hint { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: center; }
-.walk-hint kbd { font: 600 10px var(--mono, ui-monospace); padding: 1px 5px; border-radius: 4px; background: rgb(255 255 255 / .18); }
-.walk-hint b { flex-basis: 100%; text-align: center; font-weight: 500; color: #ffd58a; }
 .marker-name.you { background: #ffcf5a; color: #2a2112; font-weight: 700; }
 #walk-toggle[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
 .term-popup { position: fixed; inset: 0; z-index: 400; display: flex; flex-direction: column; background: #0a0a0f; color: #cdd6f4; }
@@ -350,6 +359,7 @@ kbd { font: 10px/1.4 var(--mono); padding: 1px 4px; border: 1px solid var(--line
 .term-tabs small { font-size: 9px; color: rgb(255 255 255 / .2); }
 .term-meta { margin-left: auto; display: flex; align-items: center; gap: 10px; flex-shrink: 0; font: 10px var(--mono, ui-monospace); color: rgb(255 255 255 / .35); }
 .term-meta kbd { padding: 1px 5px; border-radius: 4px; background: rgb(255 255 255 / .06); }
+.term-type { padding: 3px 8px; border: 1px solid rgb(34 211 238 / .5); border-radius: 5px; color: #22d3ee; background: rgb(34 211 238 / .08); font: inherit; cursor: pointer; }
 .term-badge { padding: 2px 8px; border-radius: 999px; background: rgb(243 139 168 / .12); color: #f38ba8; letter-spacing: .04em; }
 .term-badge.live { background: rgb(166 227 161 / .1); color: #a6e3a1; }
 .term-close { width: 40px; height: 40px; border: 0; border-radius: 12px; background: none; color: rgb(255 255 255 / .3); font-size: 22px; font-weight: 700; cursor: pointer; }

@@ -4,6 +4,7 @@ import type { ScrollWheelMode } from "@/lib/camera";
 import type { HudPanel, ResidentFilter } from "@/lib/hud";
 import type { Activity, GroupView } from "@/lib/hub";
 import type { FederationNode, FleetSource, OracleBot } from "@/lib/fleet-types";
+import type { SessionNotice } from "@/lib/session-url";
 import type { TerminalSnapshot } from "@/lib/terminal-types";
 import { DEFAULT_THEME, type ThemeId } from "@/lib/themes";
 
@@ -27,18 +28,21 @@ type Camera = {
   /** The citizen actually in frame: the selected one, or whoever the tour is on. */ focus: string | null;
   /** A pick by hand, and when it was made (a new pick ends the pause after you orbit). */ manual: CameraPick | null; manualAt: number;
   /** Tour the citizens who are working. */ auto: boolean;
-  sessionNotice: { id: string; reason: "offline" | "missing" } | null;
+  pendingWalkId: string | null;
+  sessionNotice: SessionNotice | null;
 };
 /** Panels, overlays and switches. */
 type Interface = {
   hudPanel: HudPanel; residentFilter: ResidentFilter; atlasOpen: boolean; paletteOpen: boolean;
   /** Full-screen terminal for this citizen id (null = closed). */ terminalFull: string | null;
+  /** Resident whose open terminal the visitor explicitly authorized for keyboard input. */ terminalInput: string | null;
+  /** Residents the visitor explicitly picked in this page, rather than receiving from the URL. */ pickedResidentIds: Set<string>;
   theme: ThemeId; sound: boolean; voice: boolean; music: boolean; scrollWheelMode: ScrollWheelMode;
   caption: { botId: string; text: string } | null;
 };
 /** You, walking, and what you throw. */
 type Play = {
-  walking: boolean; walkHint: string;
+  walking: boolean; walkingAs: string | null; walkHint: string;
   /** Picked a place while walking: fast-travel there (Human handles it, then clears it). */ travel: string | null;
   /** Clicked the ground while walking: go there (Human handles it, then clears it). */ walkTo: { x: number; z: number; run: boolean } | null;
   throwMode: boolean; balls: Ball[];
@@ -49,12 +53,14 @@ export type State = Fleet & Camera & Interface & Play;
 const initialState = (): State => ({
   bots: [], groups: [], sections: [], sources: [], nodes: [], updatedAt: 0, loading: true, preview: false, error: "", connected: false,
   hostAuth: "missing", live: {}, feed: [], terminals: {}, terminalEnabled: true, routinesEnabled: false,
-  selected: null, hovered: null, focus: null, manual: { kind: "overview" }, manualAt: Date.now(), auto: false, sessionNotice: null,
-  hudPanel: null, residentFilter: "all", atlasOpen: false, paletteOpen: false, terminalFull: null,
+  selected: null, hovered: null, focus: null, manual: { kind: "overview" }, manualAt: Date.now(), auto: false, pendingWalkId: null, sessionNotice: null,
+  hudPanel: null, residentFilter: "all", atlasOpen: false, paletteOpen: false, terminalFull: null, terminalInput: null, pickedResidentIds: new Set(),
   theme: DEFAULT_THEME, sound: false, voice: false, music: false, scrollWheelMode: "auto", caption: null,
-  walking: false, walkHint: "", travel: null, walkTo: null, throwMode: false, balls: [], hits: {},
+  walking: false, walkingAs: null, walkHint: "", travel: null, walkTo: null, throwMode: false, balls: [], hits: {},
 });
 
 export const useOffice = create<State>(initialState);
 export const setOffice = useOffice.setState;
 export const botById = (id: string | null) => id ? useOffice.getState().bots.find(bot => bot.id === id) : undefined;
+/** A possessed resident stays in the fleet/crowd, but their ordinary scene figure is replaced by the player. */
+export const residentFigureVisible = (id: string, walkingAs: string | null) => id !== walkingAs;

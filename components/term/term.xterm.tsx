@@ -28,23 +28,32 @@ export default function XTerm({ id, live, onStatus }: { id: string; live: boolea
     term.loadAddon(fit);
     let disposed = false, last = "", timer = 0, controller: AbortController | undefined;
     let socket: WebSocket | undefined;
-    const observer = new ResizeObserver(() => { try { fit.fit(); if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows })); } catch { /* not laid out yet */ } });
+    const authorized = () => {
+      const current = useOffice.getState();
+      return !disposed && current.terminalFull === id && current.terminalInput === id
+        && current.bots.some(candidate => candidate.id === id && candidate.status !== "offline");
+    };
+    const observer = new ResizeObserver(() => { try { fit.fit(); if (socket?.readyState === WebSocket.OPEN && authorized()) socket.send(JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows })); } catch { /* not laid out yet */ } });
     const attach = async () => {
       const bot = useOffice.getState().bots.find(candidate => candidate.id === id);
       try {
-        if (!bot) throw new Error("Agent not in the connected fleet");
+        if (!authorized() || !bot) throw new Error("Agent not in the connected fleet");
         controller = new AbortController();
         socket = await openPty(bot, controller.signal);
         if (disposed) { socket.close(); return; }
         const encoder = new TextEncoder();
-        socket.onopen = () => socket?.send(JSON.stringify({ type: "attach", target: bot.pane, cols: term.cols, rows: term.rows }));
+        socket.onopen = () => {
+          if (!authorized()) return socket?.close();
+          socket?.send(JSON.stringify({ type: "attach", target: bot.pane, cols: term.cols, rows: term.rows }));
+        };
         socket.onmessage = event => {
+          if (!authorized()) return socket?.close();
           if (typeof event.data !== "string") { term.write(new Uint8Array(event.data as ArrayBuffer)); return; }
           try { const message = JSON.parse(event.data) as { type?: string }; if (message.type === "attached") { status.current({ live: true, at: Date.now() }); term.focus(); } if (message.type === "detached") term.write("\r\n\x1b[33m[session detached]\x1b[0m\r\n"); } catch { /* not a control message */ }
         };
         socket.onclose = () => { if (!disposed) { term.write("\r\n\x1b[31m[connection closed]\x1b[0m\r\n"); status.current({ live: false, at: Date.now(), error: "Connection closed" }); } };
-        term.onData(data => { if (socket?.readyState === WebSocket.OPEN) socket.send(encoder.encode(data)); });
-        term.onBinary(data => { if (socket?.readyState === WebSocket.OPEN) socket.send(Uint8Array.from(data, char => char.charCodeAt(0))); });
+        term.onData(data => { if (authorized() && socket?.readyState === WebSocket.OPEN) socket.send(encoder.encode(data)); });
+        term.onBinary(data => { if (authorized() && socket?.readyState === WebSocket.OPEN) socket.send(Uint8Array.from(data, char => char.charCodeAt(0))); });
       } catch (error) { if (!disposed) status.current({ live: false, at: Date.now(), error: error instanceof Error ? error.message : "Terminal unavailable" }); }
     };
     // Alt+←/→ and Alt+1–9 belong to the popup; everything else goes to the agent.
